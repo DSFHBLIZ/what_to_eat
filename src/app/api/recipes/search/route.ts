@@ -119,42 +119,63 @@ export async function GET(request: NextRequest) {
     
     // 获取参数后，为搜索查询生成嵌入向量
     let queryEmbedding = null;
+    let semanticSearchInput = '';
+    
+    // 确定用于语义搜索的输入文本
     if (searchParamsObj.searchQuery) {
+      // 优先使用搜索框输入的文本
+      semanticSearchInput = searchParamsObj.searchQuery;
+    } else if (searchParamsObj.requiredIngredients && searchParamsObj.requiredIngredients.length > 0) {
+      // 如果没有搜索文本但有必选食材，则使用所有必选食材
+      semanticSearchInput = searchParamsObj.requiredIngredients.join(' ');
+    }
+    
+    // 只要有任何输入，就尝试生成嵌入向量
+    if (semanticSearchInput) {
       try {
-        // 生成查询的嵌入向量
-        queryEmbedding = await generateEmbedding(searchParamsObj.searchQuery);
-        console.log(`API: 成功为查询"${searchParamsObj.searchQuery}"生成嵌入向量`);
+        console.log(`API: 开始为输入"${semanticSearchInput}"生成嵌入向量...`);
         
-        // 尝试缓存嵌入向量 - 通过API端点
-        // 这里在服务器端，所以需要进行额外的处理来调用API
-        try {
-          // 创建Supabase客户端
-          const supabase = getSupabaseClient();
-          if (supabase) {
-            console.log(`API: 尝试缓存查询"${searchParamsObj.searchQuery}"的嵌入向量`);
-            
-            // 直接使用服务端的RPC调用，更可靠
-            const { error: rpcError } = await supabase.rpc('cache_query_embedding', {
-              query_text: searchParamsObj.searchQuery,
-              query_vector: queryEmbedding
-            });
-            
-            if (rpcError) {
-              console.warn(`API: 缓存嵌入向量失败，但继续搜索:`, rpcError.message);
-            } else {
-              console.log(`API: 成功缓存嵌入向量`);
+        // 生成查询的嵌入向量
+        queryEmbedding = await generateEmbedding(semanticSearchInput);
+        console.log(`API: 成功为输入"${semanticSearchInput}"生成嵌入向量，维度: ${queryEmbedding?.length}`);
+
+        // 仅当嵌入向量有效时才尝试缓存
+        if (queryEmbedding && queryEmbedding.length > 0) {
+          try {
+            // 创建Supabase客户端
+            const supabase = getSupabaseClient();
+            if (supabase) {
+              console.log(`API: 尝试缓存输入"${semanticSearchInput}"的有效嵌入向量`);
+              
+              const { error: rpcError } = await supabase.rpc('cache_query_embedding', {
+                query_text: semanticSearchInput,
+                query_vector: queryEmbedding
+              });
+              
+              if (rpcError) {
+                console.warn(`API: 缓存有效嵌入向量失败，但继续搜索:`, rpcError.message);
+              } else {
+                console.log(`API: 成功缓存有效嵌入向量`);
+              }
             }
+          } catch (cacheError) {
+            console.error(`API: 缓存有效嵌入向量过程中发生错误:`, cacheError);
+            // 不阻止搜索流程继续
           }
-        } catch (cacheError) {
-          console.error(`API: 缓存嵌入向量过程中发生错误:`, cacheError);
-          // 不阻止搜索流程继续
+        } else {
+          console.warn(`API: 生成的嵌入向量无效或为空 for input "${semanticSearchInput}"，不进行缓存。`);
         }
       } catch (error) {
-        console.error('API: 生成嵌入向量失败:', error);
+        console.error(`API: 生成嵌入向量失败 for input "${semanticSearchInput}":`, error);
+        // queryEmbedding 将保持为 null，不会尝试缓存空向量
       }
+    } else {
+      console.log(`API: 没有可用于生成嵌入向量的输入文本`);
     }
     
     try {
+      console.log(`API: 调用searchRecipes函数，queryEmbedding是否存在: ${queryEmbedding ? '是' : '否'}`);
+      console.log(`API: enableSemanticSearch设置为: ${!!queryEmbedding}`);
       // 修改searchRecipes调用，添加嵌入向量参数
       const { recipes, total, error } = await searchRecipes({
         searchQuery: searchParamsObj.searchQuery,
@@ -184,6 +205,7 @@ export async function GET(request: NextRequest) {
       const hasPrevPage = searchParamsObj.page > 1;
       
       console.log(`API: 搜索完成，找到 ${recipes.length} 个结果，总数：${total || recipes.length}`);
+      console.log(`API: searchRecipes返回，结果数量: ${recipes.length}，语义搜索启用: ${!!queryEmbedding}`);
       
       // 返回搜索结果和分页信息
       return NextResponse.json({

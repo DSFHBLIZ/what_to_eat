@@ -447,13 +447,23 @@ export async function searchRecipes({
     // 检查是否有可能启用语义搜索
     const canUseSemanticSearch = finalSearchQuery.length > 0 || finalRequiredIngredients.length > 0;
     console.log('searchRecipes: 是否适合语义搜索:', canUseSemanticSearch);
+    console.log('searchRecipes: 查询文本:', finalSearchQuery);
+    console.log('searchRecipes: 必选食材:', finalRequiredIngredients);
     
     // 检查OpenAI API密钥是否设置
     const hasOpenAIKey = !!process.env.OPENAI_API_KEY;
     console.log('searchRecipes: OpenAI API密钥状态:', hasOpenAIKey ? '已设置，可启用语义搜索' : '未设置，将使用传统搜索');
     
-    // 尝试使用存储过程启用语义搜索
-    if (hasOpenAIKey && canUseSemanticSearch) {
+    // 检查是否提供了查询嵌入向量
+    console.log('searchRecipes: 是否提供了查询嵌入向量:', queryEmbedding ? '是' : '否');
+    console.log('searchRecipes: enableSemanticSearch参数:', enableSemanticSearch);
+    
+    // 最终决定是否启用语义搜索
+    const finalEnableSemanticSearch = hasOpenAIKey && canUseSemanticSearch && enableSemanticSearch;
+    console.log('searchRecipes: 最终决定是否启用语义搜索:', finalEnableSemanticSearch);
+    
+    // 设置RPC参数中的语义搜索标志
+    if (finalEnableSemanticSearch) {
       console.log('searchRecipes: 尝试使用语义搜索增强结果...');
       rpcParams.enable_semantic_search = true;
     } else {
@@ -461,8 +471,11 @@ export async function searchRecipes({
       rpcParams.enable_semantic_search = false;
     }
     
+    // 记录最终的RPC参数
+    console.log('searchRecipes: RPC参数', JSON.stringify(rpcParams, null, 2));
+    
     // 如果启用语义搜索并有嵌入向量，增加相关RPC调用
-    if (enableSemanticSearch && queryEmbedding) {
+    if (finalEnableSemanticSearch && queryEmbedding) {
       // 使用数据库函数进行语义搜索
       try {
         // 修改为使用API端点而不是直接RPC调用
@@ -503,8 +516,6 @@ export async function searchRecipes({
         rpcParams.enable_semantic_search = false;
       }
     }
-    
-    console.log('searchRecipes: RPC参数', JSON.stringify(rpcParams, null, 2));
     
     // 直接调用 Supabase RPC
     console.log('searchRecipes: 开始调用Supabase RPC函数search_recipes...');

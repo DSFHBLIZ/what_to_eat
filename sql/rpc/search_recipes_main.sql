@@ -188,6 +188,8 @@ DECLARE
 
     -- 语义搜索变量
     query_embedding vector(1536);                           -- 查询的嵌入向量
+    recipe_embedding_vector vector(1536);                   -- 单个菜谱的嵌入向量，用于循环或连接
+    v_semantic_threshold FLOAT8 := 0.5;                     -- 为语义搜索定义一个阈值，可以作为参数传入或硬编码
 BEGIN
     -- 开始总计时
     total_start_time := clock_timestamp();
@@ -830,17 +832,17 @@ BEGIN
                 score_weight_dish_name_similar
             ) AS cs_dish_name_score,
             -- 语义搜索评分
-            score_semantic_search(
-                search_query,
-                r.filtered_菜名,
-                r.filtered_菜系,
-                r.filtered_食材,
-                r.filtered_调料,
-                CASE WHEN enable_semantic_search AND query_embedding IS NOT NULL
-                     THEN score_weight_semantic_match
-                     ELSE 0
-                END
-            ) AS semantic_search_score,
+            (CASE
+                WHEN enable_semantic_search AND query_embedding IS NOT NULL AND re.embedding IS NOT NULL THEN
+                    score_semantic_search(
+                        re.embedding,       -- 菜谱的嵌入向量 (来自 recipe_embeddings)
+                        query_embedding,    -- 查询的嵌入向量 (在函数早期获取)
+                        v_semantic_threshold, -- 语义相似度阈值
+                        score_weight_semantic_match -- 语义匹配权重
+                    )
+                ELSE
+                    0 -- 如果不满足条件，语义评分为0
+            END) AS semantic_search_score,
             -- 可选食材评分
             COALESCE(oir.opt_ingredients_score, 0) AS cs_opt_ingredients_score,
             -- 可选调料评分
@@ -851,6 +853,8 @@ BEGIN
             COALESCE(occr.opt_condiment_categories_score, 0) AS cs_opt_cond_categories_score
         FROM
             general_search_filtered r
+        LEFT JOIN
+            recipe_embeddings re ON r.filtered_id = re.recipe_id -- 关联 recipe_embeddings 表以获取菜谱向量
         LEFT JOIN
             optional_ingredient_relevance oir ON r.filtered_id = oir.filtered_id
         LEFT JOIN

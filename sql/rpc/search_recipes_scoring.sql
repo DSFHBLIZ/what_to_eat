@@ -509,145 +509,55 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 添加新的语义搜索评分函数，符合main文件中的调用参数
+-- 删除旧的语义搜索评分函数
 DROP FUNCTION IF EXISTS score_semantic_search;
--- 语义搜索评分函数 - 输出0-10范围的归一化分数
+
+-- 添加新的语义搜索评分函数，符合main文件中的调用参数
 CREATE OR REPLACE FUNCTION score_semantic_search(
-    search_query TEXT,
-    recipe_title TEXT,
-    recipe_cuisine TEXT,
-    recipe_ingredients JSONB,
-    recipe_condiments JSONB,
-    weight FLOAT8
+    recipe_embedding vector(1536),      -- 菜谱的嵌入向量
+    query_embedding vector(1536),       -- 查询的嵌入向量
+    semantic_threshold FLOAT8,          -- 语义相似度阈值
+    semantic_weight FLOAT8              -- 语义匹配权重
 )
-RETURNS FLOAT8 AS $$
+RETURNS FLOAT8
+LANGUAGE plpgsql
+AS $$
 DECLARE
-    v_semantic_search_score FLOAT8 := 0;  -- 更改变量名，避免与列名冲突
-    query_embedding vector(1536);
     similarity_score FLOAT8;
-    ingredient_name TEXT;
-    condiment_name TEXT;
-    max_similarity FLOAT8 := 0;
-    normalized_score FLOAT8 := 0;
+    normalized_score FLOAT8;
 BEGIN
-    -- 如果搜索查询为空，返回0分
-    IF search_query IS NULL OR LENGTH(TRIM(search_query)) = 0 THEN
+    -- 如果任一向量为NULL，返回0分
+    IF recipe_embedding IS NULL OR query_embedding IS NULL THEN
         RETURN 0;
     END IF;
     
-    -- 尝试获取查询的嵌入向量（如果已经计算过并缓存）
-    BEGIN
-        SELECT embedding INTO STRICT query_embedding
-        FROM query_embeddings_cache
-        WHERE query = search_query
-        AND created_at > NOW() - INTERVAL '1 day';
-    EXCEPTION
-        WHEN NO_DATA_FOUND THEN
-            -- 尝试生成嵌入向量
-            BEGIN
-                query_embedding := generate_query_embedding(search_query);
-            EXCEPTION
-                WHEN OTHERS THEN
-                    RETURN 0; -- 无法生成嵌入向量时返回0分
-            END;
-    END;
+    -- 计算余弦相似度 (1 - 距离)
+    -- PostgreSQL的向量运算符 <=> 计算两个向量之间的余弦距离
+    similarity_score := 1 - (recipe_embedding <=> query_embedding);
     
-    -- 如果仍然没有嵌入向量，返回0分
-    IF query_embedding IS NULL THEN
+    -- 如果相似度低于阈值，返回0
+    IF similarity_score < semantic_threshold THEN
         RETURN 0;
-    END IF;
-    
-    -- 检查菜名的语义相似度
-    BEGIN
-        SELECT 1 - (embedding <=> query_embedding) INTO similarity_score
-        FROM recipe_embeddings
-        WHERE title = recipe_title
-        LIMIT 1;
-        
-        IF similarity_score IS NOT NULL AND similarity_score > max_similarity THEN
-            max_similarity := similarity_score;
-        END IF;
-    EXCEPTION
-        WHEN OTHERS THEN
-            -- 忽略错误，继续检查其他字段
-            NULL;
-    END;
-    
-    -- 检查菜系的语义相似度
-    BEGIN
-        SELECT 1 - (embedding <=> query_embedding) INTO similarity_score
-        FROM recipe_embeddings
-        WHERE title = recipe_cuisine
-        LIMIT 1;
-        
-        IF similarity_score IS NOT NULL AND similarity_score > max_similarity THEN
-            max_similarity := similarity_score;
-        END IF;
-    EXCEPTION
-        WHEN OTHERS THEN
-            -- 忽略错误，继续检查其他字段
-            NULL;
-    END;
-    
-    -- 检查食材的语义相似度
-    IF recipe_ingredients IS NOT NULL AND jsonb_array_length(recipe_ingredients) > 0 THEN
-        FOR i IN 0..jsonb_array_length(recipe_ingredients)-1 LOOP
-            ingredient_name := recipe_ingredients->i->>'名称';
-            IF ingredient_name IS NOT NULL THEN
-                BEGIN
-                    SELECT 1 - (embedding <=> query_embedding) INTO similarity_score
-                    FROM recipe_embeddings
-                    WHERE title = ingredient_name
-                    LIMIT 1;
-                    
-                    IF similarity_score IS NOT NULL AND similarity_score > max_similarity THEN
-                        max_similarity := similarity_score;
-                    END IF;
-                EXCEPTION
-                    WHEN OTHERS THEN
-                        -- 忽略错误，继续检查下一个食材
-                        CONTINUE;
-                END;
-            END IF;
-        END LOOP;
-    END IF;
-    
-    -- 检查调料的语义相似度
-    IF recipe_condiments IS NOT NULL AND jsonb_array_length(recipe_condiments) > 0 THEN
-        FOR i IN 0..jsonb_array_length(recipe_condiments)-1 LOOP
-            condiment_name := recipe_condiments->i->>'名称';
-            IF condiment_name IS NOT NULL THEN
-                BEGIN
-                    SELECT 1 - (embedding <=> query_embedding) INTO similarity_score
-                    FROM recipe_embeddings
-                    WHERE title = condiment_name
-                    LIMIT 1;
-                    
-                    IF similarity_score IS NOT NULL AND similarity_score > max_similarity THEN
-                        max_similarity := similarity_score;
-                    END IF;
-                EXCEPTION
-                    WHEN OTHERS THEN
-                        -- 忽略错误，继续检查下一个调料
-                        CONTINUE;
-                END;
-            END IF;
-        END LOOP;
     END IF;
     
     -- 计算原始得分 (相似度 * 权重)
-    v_semantic_search_score := max_similarity * weight;
+    normalized_score := similarity_score * semantic_weight;
     
-    -- 归一化到0-10范围
-    -- 语义相似度本身在0-1范围内，weight为10.0时，最大可能分数为10.0
-    -- 直接将v_semantic_search_score作为归一化分数
-    -- 但确保不超过10分
-    normalized_score := LEAST(v_semantic_search_score, 10.0);
-    
-    -- 返回归一化的语义搜索评分（0-10范围）
-    RETURN COALESCE(normalized_score, 0);
+    -- 确保结果在0-10范围内（评分标准化）
+    RETURN LEAST(normalized_score, 10.0);
 END;
-$$ LANGUAGE plpgsql;
+$$;
+
+-- 添加函数注释
+COMMENT ON FUNCTION score_semantic_search(vector(1536), vector(1536), FLOAT8, FLOAT8) IS
+'计算两个向量之间的语义相似度得分，用于搜索菜谱时的语义匹配。
+输出范围：0-10，其中0表示不相关，10表示完全匹配。
+
+参数:
+- recipe_embedding: 菜谱的嵌入向量
+- query_embedding: 查询的嵌入向量
+- semantic_threshold: 语义相似度阈值，低于此值视为不相关
+- semantic_weight: 语义匹配权重，用于计算最终得分';
 
 -- 添加score_cuisine函数定义
 DROP FUNCTION IF EXISTS score_cuisine;

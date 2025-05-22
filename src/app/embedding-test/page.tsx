@@ -177,6 +177,37 @@ export default function EmbeddingTestPage() {
     setLogs([]);
   };
 
+  // 向量化所有菜谱
+  const vectorizeAllRecipes = async () => {
+    setLoading(true);
+    setError('');
+    
+    try {
+      log('开始向量化所有菜谱...');
+      
+      // 直接调用API端点来向量化菜谱
+      const response = await fetch('/api/embedding/vectorize-recipes', {
+        method: 'POST',
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        log(`向量化菜谱失败: ${errorData.error || response.statusText}`);
+        setError(errorData.error || response.statusText);
+        return;
+      }
+      
+      const data = await response.json();
+      log(`向量化菜谱成功: ${data.message || '所有菜谱已向量化'}`);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      log(`向量化菜谱失败: ${errorMessage}`);
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // 服务端直接缓存向量 (这是直接调用新的API端点)
   const serverCacheEmbedding = async () => {
     if (!query) {
@@ -189,8 +220,7 @@ export default function EmbeddingTestPage() {
     
     try {
       log(`开始服务端缓存嵌入向量: "${query}"`);
-      
-      const response = await fetch('/api/embedding/cache', { // 这个端点会处理生成和缓存
+      const response = await fetch('/api/embedding/cache', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -290,6 +320,14 @@ export default function EmbeddingTestPage() {
               className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
             >
               清空日志
+            </button>
+            
+            <button
+              onClick={vectorizeAllRecipes}
+              className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+              disabled={loading}
+            >
+              向量化所有菜谱
             </button>
           </div>
           
