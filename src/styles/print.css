@@ -1,0 +1,220 @@
+/* 打印样式 - 用于美化食谱打印输出 */
+
+@media print {
+  /* 基础页面设置 */
+  @page {
+    size: A4;
+    margin: 1.5cm;
+  }
+
+  /* 工具类：打印时显示/隐藏 */
+  .print\:hidden,
+  .hidden-on-print {
+    display: none !important;
+  }
+  
+  .print\:block,
+  .only-on-print {
+    display: block !important;
+  }
+  
+  /* 打印页面控制 */
+  .print-a4-page {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+  
+  .page-break-before,
+  .page-break {
+    page-break-before: always;
+  }
+  
+  .page-break-after {
+    page-break-after: always;
+  }
+  
+  .avoid-break {
+    page-break-inside: avoid;
+  }
+
+  /* 隐藏UI元素 */
+  header,
+  footer,
+  nav,
+  .no-print,
+  button:not(.print-show),
+  .btn, 
+  [role="button"], 
+  input[type="button"],
+  input[type="submit"],
+  aside, 
+  .sidebar, 
+  .navigation, 
+  .comments {
+    display: none !important;
+  }
+
+  /* 基础样式重置 */
+  body {
+    font-size: 12pt;
+    color: black;
+    background: white;
+    font-family: serif;
+    line-height: 1.5;
+    width: 100%;
+  }
+
+  /* 容器调整 */
+  .print-container {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  /* 图片优化 */
+  img {
+    max-width: 100% !important;
+    height: auto !important;
+    page-break-inside: avoid;
+  }
+
+  /* 标题样式 */
+  h1 {
+    font-size: 18pt;
+    margin-bottom: 10pt;
+    page-break-after: avoid;
+  }
+
+  h2 {
+    font-size: 14pt;
+    margin-top: 14pt;
+    margin-bottom: 8pt;
+    page-break-after: avoid;
+  }
+
+  h3 {
+    font-size: 13pt;
+    margin-top: 12pt;
+    margin-bottom: 6pt;
+    page-break-after: avoid;
+  }
+
+  /* 段落控制 */
+  p {
+    margin-bottom: 0.3cm;
+    orphans: 3;
+    widows: 3;
+  }
+
+  /* 列表样式 */
+  ul, ol {
+    margin-left: 0.5cm;
+    margin-bottom: 0.5cm;
+    page-break-inside: avoid;
+  }
+
+  li {
+    margin-bottom: 0.2cm;
+  }
+
+  /* 表格样式 */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 0.5cm;
+    page-break-inside: avoid;
+  }
+
+  table, th, td {
+    border: 1px solid #ddd;
+  }
+
+  th, td {
+    padding: 8pt;
+    text-align: left;
+  }
+
+  /* 打印布局工具类 */
+  .print\:p-0 {
+    padding: 0 !important;
+  }
+  
+  .print\:mb-4 {
+    margin-bottom: 1rem !important;
+  }
+  
+  /* 优化打印的列布局 */
+  .grid {
+    display: block !important;
+  }
+  
+  /* 避免在元素之间分页 */
+  div, h2, h3, ul, ol, li {
+    page-break-inside: avoid;
+  }
+  
+  /* 配料和步骤的特殊样式 */
+  .recipe-ingredients {
+    margin-bottom: 0.8cm;
+    page-break-inside: avoid;
+  }
+
+  .recipe-steps {
+    counter-reset: step;
+  }
+
+  .recipe-step {
+    margin-bottom: 0.4cm;
+    page-break-inside: avoid;
+  }
+
+  .recipe-step-number {
+    font-weight: bold;
+  }
+
+  /* 链接处理 */
+  a {
+    text-decoration: none !important;
+    color: inherit !important;
+  }
+
+  /* 辅助信息样式 */
+  .recipe-meta {
+    margin-bottom: 0.5cm;
+    font-size: 10pt;
+    color: #444;
+  }
+
+  /* 页脚样式 */
+  .print-footer {
+    position: fixed;
+    bottom: 0.5cm;
+    width: 100%;
+    text-align: center;
+    font-size: 9pt;
+    color: #777;
+  }
+  
+  /* 显示全部展开的折叠内容 */
+  .collapse {
+    display: block !important;
+    height: auto !important;
+  }
+  
+  /* 确保文本对比度高 */
+  * {
+    color: black !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+  }
+  
+  /* 打印时始终显示的背景 */
+  .print-background {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+} 
