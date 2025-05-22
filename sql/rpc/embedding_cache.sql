@@ -2,6 +2,9 @@
 DROP FUNCTION IF EXISTS get_cached_embedding(TEXT);
 DROP FUNCTION IF EXISTS update_embedding_cache(UUID, FLOAT[], TIMESTAMPTZ);
 DROP FUNCTION IF EXISTS insert_embedding_cache(TEXT, FLOAT[], TIMESTAMPTZ);
+DROP FUNCTION IF EXISTS cache_query_embedding(TEXT, numeric[]);
+DROP FUNCTION IF EXISTS cache_query_embedding(TEXT, vector);
+DROP FUNCTION IF EXISTS cache_query_embedding(TEXT, vector(1536));
 
 -- Step 0b: 删除旧表（如果存在）
 DROP TABLE IF EXISTS query_embeddings_cache;
@@ -115,7 +118,7 @@ $$ LANGUAGE plpgsql;
 -- 创建缓存查询嵌入向量的函数
 CREATE OR REPLACE FUNCTION cache_query_embedding(
     query_text TEXT,
-    query_vector vector(1536)
+    query_vector vector(1536)  -- 明确指定为vector(1536)类型，不要使用numeric[]
 )
 RETURNS BOOLEAN
 LANGUAGE plpgsql
@@ -132,4 +135,13 @@ BEGIN
     
     RETURN TRUE;
 END;
-$$; 
+$$;
+
+-- 添加注释说明函数用途
+COMMENT ON FUNCTION cache_query_embedding(TEXT, vector(1536)) IS 
+'缓存查询嵌入向量的函数，用于存储生成的嵌入向量以避免重复计算。
+参数:
+  query_text - 查询文本
+  query_vector - 1536维度的嵌入向量（必须是vector(1536)类型）
+返回:
+  成功返回TRUE'; 

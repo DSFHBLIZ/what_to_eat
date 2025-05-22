@@ -465,16 +465,42 @@ export async function searchRecipes({
     if (enableSemanticSearch && queryEmbedding) {
       // 使用数据库函数进行语义搜索
       try {
-        // 先尝试将嵌入向量缓存到数据库
-        await supabase.rpc('cache_query_embedding', {
-          query_text: searchQuery,
-          query_vector: queryEmbedding
-        });
+        // 修改为使用API端点而不是直接RPC调用
+        if (typeof window !== 'undefined') {
+          // 在浏览器环境中
+          console.log('searchRecipes: 通过API端点缓存嵌入向量');
+          const cacheResponse = await fetch('/api/embedding/cache', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ text: searchQuery }),
+          });
+          
+          if (!cacheResponse.ok) {
+            console.warn('searchRecipes: 缓存嵌入向量失败，将继续搜索但可能不使用语义搜索');
+          } else {
+            console.log('searchRecipes: 成功缓存嵌入向量');
+          }
+        } else {
+          // 在服务器端环境中，更安全地尝试RPC调用
+          console.log('searchRecipes: 服务器端尝试缓存嵌入向量');
+          const { error: rpcError } = await supabase.rpc('cache_query_embedding', {
+            query_text: searchQuery,
+            query_vector: queryEmbedding
+          });
+          
+          if (rpcError) {
+            console.warn('searchRecipes: 服务器端缓存嵌入向量失败:', rpcError);
+          }
+        }
         
         // 设置语义搜索标志
         rpcParams.enable_semantic_search = true;
       } catch (error) {
         console.error('设置语义搜索参数失败:', error);
+        // 出错时依然尝试继续搜索，但不使用语义搜索
+        rpcParams.enable_semantic_search = false;
       }
     }
     

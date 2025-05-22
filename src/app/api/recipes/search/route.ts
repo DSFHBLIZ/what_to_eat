@@ -124,6 +124,31 @@ export async function GET(request: NextRequest) {
         // 生成查询的嵌入向量
         queryEmbedding = await generateEmbedding(searchParamsObj.searchQuery);
         console.log(`API: 成功为查询"${searchParamsObj.searchQuery}"生成嵌入向量`);
+        
+        // 尝试缓存嵌入向量 - 通过API端点
+        // 这里在服务器端，所以需要进行额外的处理来调用API
+        try {
+          // 创建Supabase客户端
+          const supabase = getSupabaseClient();
+          if (supabase) {
+            console.log(`API: 尝试缓存查询"${searchParamsObj.searchQuery}"的嵌入向量`);
+            
+            // 直接使用服务端的RPC调用，更可靠
+            const { error: rpcError } = await supabase.rpc('cache_query_embedding', {
+              query_text: searchParamsObj.searchQuery,
+              query_vector: queryEmbedding
+            });
+            
+            if (rpcError) {
+              console.warn(`API: 缓存嵌入向量失败，但继续搜索:`, rpcError.message);
+            } else {
+              console.log(`API: 成功缓存嵌入向量`);
+            }
+          }
+        } catch (cacheError) {
+          console.error(`API: 缓存嵌入向量过程中发生错误:`, cacheError);
+          // 不阻止搜索流程继续
+        }
       } catch (error) {
         console.error('API: 生成嵌入向量失败:', error);
       }
