@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { SEMANTIC_SEARCH_THRESHOLDS } from '../../src/utils/data/searchConfig';
 
 // 环境变量
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -376,9 +377,9 @@ export async function searchRecipesByEmbedding(
       const embedding = await generateEmbedding(query);
       console.log('[EmbeddingService] searchRecipesByEmbedding: 成功生成嵌入向量，维度:', embedding.length);
       
-      // 设置默认值
+      // 设置默认值 - 使用配置文件中的DEFAULT值而不是硬编码的0.5
       const {
-        similarityThreshold = 0.5,
+        similarityThreshold = SEMANTIC_SEARCH_THRESHOLDS.DEFAULT,
         matchCount = 10,
         cuisines,
         difficulties,
@@ -502,7 +503,7 @@ export async function checkIngredientsSemanticSimilarity(
  */
 export async function getSemanticSimilarIngredients(
   ingredient: string,
-  similarityThreshold: number = 0.75,
+  similarityThreshold: number = SEMANTIC_SEARCH_THRESHOLDS.STRICT,
   maxResults: number = 5
 ): Promise<{ name: string; similarity: number }[]> {
   try {
@@ -511,6 +512,9 @@ export async function getSemanticSimilarIngredients(
     if (!supabase) {
       throw new Error('无法创建Supabase客户端');
     }
+    
+    // 记录使用的阈值
+    console.log(`[EmbeddingService] getSemanticSimilarIngredients: 使用阈值 ${similarityThreshold}`);
     
     // 获取已知食材列表
     const { data: ingredientsData, error: ingredientsError } = await supabase

@@ -20,6 +20,14 @@ DROP FUNCTION IF EXISTS search_recipes;
 
 -- 主搜索函数
 CREATE OR REPLACE FUNCTION search_recipes(
+    -- 首先定义没有默认值的参数
+    trgm_similarity_threshold DOUBLE PRECISION,        -- 模糊匹配相似度阈值，必须从外部传入
+    semantic_threshold DOUBLE PRECISION,               -- 默认语义搜索阈值，必须从外部传入
+    forbidden_ingredients_threshold DOUBLE PRECISION,  -- 忌口食材的语义搜索阈值，必须从外部传入
+    required_ingredients_threshold DOUBLE PRECISION,   -- 必选食材的语义搜索阈值，必须从外部传入
+    general_search_threshold DOUBLE PRECISION,         -- 通用搜索的语义搜索阈值，必须从外部传入
+    
+    -- 然后定义有默认值的参数
     search_query TEXT DEFAULT NULL,                    -- 搜索关键词
     required_ingredients TEXT[] DEFAULT NULL,          -- 必须包含的食材
     optional_ingredients TEXT[] DEFAULT NULL,          -- 可选包含的食材
@@ -40,11 +48,10 @@ CREATE OR REPLACE FUNCTION search_recipes(
     return_all_results BOOLEAN DEFAULT FALSE,          -- 是否返回所有结果（不分页）
     debug_mode BOOLEAN DEFAULT FALSE,                  -- 是否启用性能调试模式
     stabilize_results BOOLEAN DEFAULT FALSE,           -- 确保结果一致性（移除随机因素）
-    trgm_similarity_threshold DOUBLE PRECISION DEFAULT 0.35,      -- 模糊匹配相似度阈值，保持为0.35
     forbidden_ingredients TEXT[] DEFAULT NULL,         -- 忌口食材（强排除）
     preview_mode BOOLEAN DEFAULT FALSE,                -- 预览模式：返回更多分页结果用于分析
     preview_page_count INTEGER DEFAULT 3,              -- 预览模式下要返回的页数
-    enable_semantic_search BOOLEAN DEFAULT TRUE       -- 是否启用语义搜索功能，默认为启用
+    enable_semantic_search BOOLEAN DEFAULT TRUE        -- 是否启用语义搜索功能，默认为启用
 )
 RETURNS TABLE (
     id UUID,                    -- 菜谱ID
@@ -189,11 +196,14 @@ DECLARE
     -- 语义搜索变量
     query_embedding vector(1536);                           -- 查询的嵌入向量
     recipe_embedding_vector vector(1536);                   -- 单个菜谱的嵌入向量，用于循环或连接
-    v_semantic_threshold FLOAT8 := 0.5;                     -- 为语义搜索定义一个阈值，可以作为参数传入或硬编码
+    v_semantic_threshold FLOAT8;                            -- 语义搜索阈值
 BEGIN
     -- 开始总计时
     total_start_time := clock_timestamp();
     current_step_start := total_start_time;
+
+    -- 设置语义搜索阈值 - 不再使用默认值
+    v_semantic_threshold := semantic_threshold;
 
     -- 如果启用语义搜索，获取嵌入向量
     IF enable_semantic_search AND search_query IS NOT NULL AND LENGTH(TRIM(search_query)) > 0 THEN
@@ -599,7 +609,17 @@ BEGIN
             filtered_difficulty_filtered_count,
             (SELECT count FROM dietary_count) AS filtered_dietary_filtered_count
         FROM dietary_filtered
-        WHERE filter_by_forbidden_ingredients(filtered_食材, filtered_调料, filtered_菜名, filtered_菜系, filtered_食材分类, filtered_调料分类, clean_forbidden_ing)
+        WHERE filter_by_forbidden_ingredients(
+            filtered_食材, 
+            filtered_调料, 
+            filtered_菜名, 
+            filtered_菜系, 
+            filtered_食材分类, 
+            filtered_调料分类, 
+            clean_forbidden_ing, 
+            forbidden_ingredients_threshold,  -- 传递忌口食材的语义搜索阈值
+            trgm_similarity_threshold        -- 传递模糊匹配阈值
+        )
     ),
     forbidden_ingredient_count AS (
         -- 记录忌口食材筛选后的记录数
@@ -636,7 +656,31 @@ BEGIN
             filtered_dietary_filtered_count,
             (SELECT count FROM forbidden_ingredient_count) AS filtered_forbidden_ingredient_filtered_count
         FROM forbidden_ingredient_filtered
-        WHERE filter_by_required_ingredients(filtered_食材, filtered_调料, filtered_菜名, filtered_菜系, filtered_食材分类, filtered_调料分类, clean_req_ingredients, similarity_threshold)
+        WHERE filter_by_required_ingredients(
+            filtered_id,
+            filtered_菜名,
+            filtered_菜系,
+            filtered_口味特点,
+            filtered_烹饪技法,
+            filtered_食材,
+            filtered_调料,
+            filtered_步骤,
+            filtered_注意事项,
+            filtered_created_at,
+            filtered_updated_at,
+            filtered_烹饪难度,
+            filtered_是否无麸质,
+            filtered_调料分类,
+            filtered_user_id,
+            filtered_是否清真,
+            filtered_食材分类,
+            filtered_是否纯素,
+            filtered_菜系_jsonb,
+            filtered_菜名_jsonb,
+            clean_req_ingredients,
+            similarity_threshold,  -- 传递模糊匹配阈值
+            required_ingredients_threshold  -- 使用传入的语义搜索阈值参数
+        )
     ),
     required_ingredient_count AS (
         -- 记录必选食材筛选后的记录数
@@ -675,7 +719,29 @@ BEGIN
             (SELECT count FROM required_ingredient_count) AS filtered_required_ingredient_filtered_count
         FROM required_ingredient_filtered
         WHERE filter_by_general_search(
-            filtered_菜名, filtered_菜系, filtered_食材, filtered_调料, filtered_食材分类, filtered_调料分类, search_query
+            filtered_id,
+            filtered_菜名,
+            filtered_菜系,
+            filtered_口味特点,
+            filtered_烹饪技法,
+            filtered_食材,
+            filtered_调料,
+            filtered_步骤,
+            filtered_注意事项,
+            filtered_created_at,
+            filtered_updated_at,
+            filtered_烹饪难度,
+            filtered_是否无麸质,
+            filtered_调料分类,
+            filtered_user_id,
+            filtered_是否清真,
+            filtered_食材分类,
+            filtered_是否纯素,
+            filtered_菜系_jsonb,
+            filtered_菜名_jsonb,
+            search_query,
+            general_search_threshold,  -- 传递通用搜索的语义搜索阈值
+            trgm_similarity_threshold  -- 传递模糊匹配阈值
         )
     ),
     general_search_count AS (
@@ -1014,33 +1080,41 @@ $$;
 
 -- 为函数添加注释
 COMMENT ON FUNCTION search_recipes(
-    TEXT, TEXT[], TEXT[], TEXT[], TEXT[], TEXT[], TEXT[], TEXT[], TEXT[], TEXT[],
-    TEXT[], TEXT[], TEXT[], INTEGER, INTEGER, TEXT, TEXT, BOOLEAN, BOOLEAN, BOOLEAN, DOUBLE PRECISION, TEXT[], BOOLEAN, INTEGER, BOOLEAN
+    DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION,
+    TEXT, TEXT[], TEXT[], TEXT[], TEXT[],
+    TEXT[], TEXT[], TEXT[], TEXT[], TEXT[],
+    TEXT[], TEXT[], TEXT[], INTEGER, INTEGER, 
+    TEXT, TEXT, BOOLEAN, BOOLEAN, BOOLEAN,
+    TEXT[], BOOLEAN, INTEGER, BOOLEAN
 ) IS
 '高效搜索菜谱的数据库函数，根据多种条件在数据库端进行筛选，避免将全部数据传输到前端。
 
 参数:
+- trgm_similarity_threshold: 模糊匹配相似度阈值 (DOUBLE PRECISION)，必须从前端配置传入
+- semantic_threshold: 默认语义搜索相似度阈值 (DOUBLE PRECISION)，必须从前端配置传入
+- forbidden_ingredients_threshold: 忌口食材的语义搜索阈值 (DOUBLE PRECISION)，必须从前端配置传入
+- required_ingredients_threshold: 必选食材的语义搜索阈值 (DOUBLE PRECISION)，必须从前端配置传入
+- general_search_threshold: 通用搜索的语义搜索阈值 (DOUBLE PRECISION)，必须从前端配置传入
 - search_query: 搜索关键词 (TEXT)
-- required_ingredients: 必须包含的食材数组 (TEXT[])
-- optional_ingredients: 可选包含的食材数组 (TEXT[])
-- optional_condiments: 可选包含的调料数组 (TEXT[])
+- required_ingredients: 必选食材数组 (TEXT[])
+- optional_ingredients: 可选食材数组 (TEXT[])
+- optional_condiments: 可选调料数组 (TEXT[])
 - dish_name_keywords: 菜名关键词数组 (TEXT[])
 - cuisines: 菜系筛选数组 (TEXT[])
 - flavors: 口味筛选数组 (TEXT[])
 - difficulties: 难度筛选数组 (TEXT[])
 - dietary_restrictions: 饮食限制数组 (TEXT[])
-- required_ingredient_categories: 必须包含的食材分类数组 (TEXT[])
-- optional_ingredient_categories: 可选包含的食材分类数组 (TEXT[])
-- required_condiment_categories: 必须包含的调料分类数组 (TEXT[])
-- optional_condiment_categories: 可选包含的调料分类数组 (TEXT[])
-- page: 分页页码 (INTEGER)
-- page_size: 每页条数 (INTEGER)
+- required_ingredient_categories: 必选食材分类数组 (TEXT[])
+- optional_ingredient_categories: 可选食材分类数组 (TEXT[])
+- required_condiment_categories: 必选调料分类数组 (TEXT[])
+- optional_condiment_categories: 可选调料分类数组 (TEXT[])
+- page: 页码 (INTEGER)
+- page_size: 每页数量 (INTEGER)
 - sort_field: 排序字段 (TEXT)
 - sort_direction: 排序方向 (TEXT)
 - return_all_results: 是否返回所有结果 (BOOLEAN)
 - debug_mode: 是否启用性能调试模式 (BOOLEAN)
 - stabilize_results: 是否确保结果一致性 (BOOLEAN)
-- trgm_similarity_threshold: 模糊匹配相似度阈值 (DOUBLE PRECISION)
 - forbidden_ingredients: 忌口食材数组 (TEXT[])
 - preview_mode: 预览模式 (BOOLEAN)
 - preview_page_count: 预览模式页数 (INTEGER)

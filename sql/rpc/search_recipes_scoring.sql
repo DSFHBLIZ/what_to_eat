@@ -514,17 +514,17 @@ DROP FUNCTION IF EXISTS score_semantic_search;
 
 -- 添加新的语义搜索评分函数，符合main文件中的调用参数
 CREATE OR REPLACE FUNCTION score_semantic_search(
-    recipe_embedding vector(1536),      -- 菜谱的嵌入向量
-    query_embedding vector(1536),       -- 查询的嵌入向量
-    semantic_threshold FLOAT8,          -- 语义相似度阈值
-    semantic_weight FLOAT8              -- 语义匹配权重
+    recipe_embedding vector,     -- 菜谱的嵌入向量
+    query_embedding vector,      -- 查询的嵌入向量
+    semantic_threshold double precision,          -- 语义相似度阈值
+    score_weight_semantic_match double precision  -- 语义匹配权重
 )
-RETURNS FLOAT8
-LANGUAGE plpgsql
-AS $$
+RETURNS FLOAT8 AS $$
 DECLARE
-    similarity_score FLOAT8;
-    normalized_score FLOAT8;
+    similarity_score FLOAT8 := 0;
+    effective_threshold FLOAT8 := semantic_threshold;  -- 直接使用传入的阈值
+    raw_score FLOAT8 := 0;
+    normalized_score FLOAT8 := 0;
 BEGIN
     -- 如果任一向量为NULL，返回0分
     IF recipe_embedding IS NULL OR query_embedding IS NULL THEN
@@ -536,20 +536,27 @@ BEGIN
     similarity_score := 1 - (recipe_embedding <=> query_embedding);
     
     -- 如果相似度低于阈值，返回0
-    IF similarity_score < semantic_threshold THEN
+    IF similarity_score < effective_threshold THEN
         RETURN 0;
     END IF;
     
     -- 计算原始得分 (相似度 * 权重)
-    normalized_score := similarity_score * semantic_weight;
+    raw_score := similarity_score * score_weight_semantic_match;
     
-    -- 确保结果在0-10范围内（评分标准化）
-    RETURN LEAST(normalized_score, 10.0);
+    -- 归一化到0-10范围
+    IF raw_score <= 0 THEN
+        RETURN 0;
+    END IF;
+    
+    normalized_score := (raw_score / 10.0) * 10.0;
+    
+    -- 确保得分在0-10范围内
+    RETURN GREATEST(LEAST(normalized_score, 10.0), 0);
 END;
-$$;
+$$ LANGUAGE plpgsql;
 
 -- 添加函数注释
-COMMENT ON FUNCTION score_semantic_search(vector(1536), vector(1536), FLOAT8, FLOAT8) IS
+COMMENT ON FUNCTION score_semantic_search(vector, vector, double precision, double precision) IS
 '计算两个向量之间的语义相似度得分，用于搜索菜谱时的语义匹配。
 输出范围：0-10，其中0表示不相关，10表示完全匹配。
 
@@ -557,7 +564,7 @@ COMMENT ON FUNCTION score_semantic_search(vector(1536), vector(1536), FLOAT8, FL
 - recipe_embedding: 菜谱的嵌入向量
 - query_embedding: 查询的嵌入向量
 - semantic_threshold: 语义相似度阈值，低于此值视为不相关
-- semantic_weight: 语义匹配权重，用于计算最终得分';
+- score_weight_semantic_match: 语义匹配权重';
 
 -- 添加score_cuisine函数定义
 DROP FUNCTION IF EXISTS score_cuisine;

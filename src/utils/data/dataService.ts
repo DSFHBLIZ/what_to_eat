@@ -5,6 +5,7 @@ import { logError } from '../common/errorLogger';
 import { ensureArray } from '../common/typeChecks';
 import { IngredientTag } from '../../types/search';
 import { searchIngredientsAndSeasonings } from '../recipe/searchService';
+import { SEMANTIC_SEARCH_THRESHOLDS, TRGM_SIMILARITY_THRESHOLD, SEARCH_CONFIG } from './searchConfig';
 
 // ======== Supabase客户端部分 ========
 
@@ -242,7 +243,8 @@ export async function fetchRecipes(options: FetchRecipesOptions = {}): Promise<{
     page: pagination?.page || 1,
     pageSize: pagination?.limit || 20,
     sortField: sort?.field || 'created_at',
-    sortDirection: sort?.direction || 'desc'
+    sortDirection: sort?.direction || 'desc',
+    semanticSimilarityThreshold: SEMANTIC_SEARCH_THRESHOLDS.DEFAULT // 使用统一的常量
   });
 }
 
@@ -253,12 +255,14 @@ export async function searchRecipesByIngredients({
   requiredIngredients = [],
   optionalIngredients = [],
   requiredSeasonings = [],
-  optionalSeasonings = []
+  optionalSeasonings = [],
+  semanticSimilarityThreshold = SEMANTIC_SEARCH_THRESHOLDS.DEFAULT // 使用统一的常量
 }: {
   requiredIngredients?: string[];
   optionalIngredients?: string[];
   requiredSeasonings?: string[];
   optionalSeasonings?: string[];
+  semanticSimilarityThreshold?: number;
 }): Promise<Recipe[]> {
   // 使用统一的searchRecipes函数
   const { recipes } = await searchRecipes({
@@ -275,7 +279,8 @@ export async function searchRecipesByIngredients({
     sortField: 'relevance_score',
     sortDirection: 'desc',
     queryEmbedding: null,
-    enableSemanticSearch: false
+    enableSemanticSearch: false,
+    semanticSimilarityThreshold
   });
   
   return recipes;
@@ -299,7 +304,8 @@ export async function searchRecipes({
   sortField = '菜名',
   sortDirection = 'asc',
   queryEmbedding = null,
-  enableSemanticSearch = false
+  enableSemanticSearch = false,
+  semanticSimilarityThreshold = SEMANTIC_SEARCH_THRESHOLDS.DEFAULT // 默认使用配置中的DEFAULT阈值
 }: {
   searchQuery?: string;
   requiredIngredients?: string[] | IngredientTag[];
@@ -315,6 +321,7 @@ export async function searchRecipes({
   sortDirection?: 'asc' | 'desc';
   queryEmbedding?: number[] | null;
   enableSemanticSearch?: boolean;
+  semanticSimilarityThreshold?: number;
 }): Promise<{
   recipes: Recipe[];
   total?: number;
@@ -389,6 +396,23 @@ export async function searchRecipes({
       mappedSortField = '菜名';
     }
 
+    // 提取出具体的语义搜索阈值 - 从配置中获取，确保SQL函数不依赖任何默认值
+    const forbiddenIngredientsThreshold = SEMANTIC_SEARCH_THRESHOLDS.FORBIDDEN_INGREDIENTS;
+    const requiredIngredientsThreshold = SEMANTIC_SEARCH_THRESHOLDS.REQUIRED_INGREDIENTS;
+    const generalSearchThreshold = SEMANTIC_SEARCH_THRESHOLDS.GENERAL_SEARCH;
+    
+    // 确保使用配置中的阈值，同时保留函数参数中的值作为总体控制
+    const effectiveThreshold = semanticSimilarityThreshold || SEMANTIC_SEARCH_THRESHOLDS.DEFAULT;
+    
+    // 日志记录所有使用的阈值，以便调试
+    console.log('searchRecipes: 使用的语义搜索阈值:', {
+      effectiveThreshold,
+      forbiddenIngredientsThreshold,
+      requiredIngredientsThreshold,
+      generalSearchThreshold,
+      trgmSimilarityThreshold: TRGM_SIMILARITY_THRESHOLD
+    });
+    
     // 组装 RPC 参数
     const rpcParams: {
       search_query: string;
@@ -416,6 +440,10 @@ export async function searchRecipes({
       preview_mode: boolean;
       preview_page_count: number;
       enable_semantic_search: boolean;
+      semantic_threshold: number;
+      forbidden_ingredients_threshold: number;
+      required_ingredients_threshold: number;
+      general_search_threshold: number;
     } = {
       search_query: finalSearchQuery,
       required_ingredients: finalRequiredIngredients,
@@ -437,11 +465,15 @@ export async function searchRecipes({
       return_all_results: false,
       debug_mode: true, // 启用调试模式以返回更多统计信息
       stabilize_results: true,
-      trgm_similarity_threshold: 0.35, // 默认相似度阈值
+      trgm_similarity_threshold: TRGM_SIMILARITY_THRESHOLD,
       forbidden_ingredients: finalAvoidIngredients,
       preview_mode: false,
       preview_page_count: 1,
-      enable_semantic_search: false // 默认不启用语义搜索，后面会根据条件修改
+      enable_semantic_search: false, // 默认不启用语义搜索，后面会根据条件修改
+      semantic_threshold: effectiveThreshold,
+      forbidden_ingredients_threshold: forbiddenIngredientsThreshold,
+      required_ingredients_threshold: requiredIngredientsThreshold,
+      general_search_threshold: generalSearchThreshold
     };
 
     // 检查是否有可能启用语义搜索
@@ -518,7 +550,7 @@ export async function searchRecipes({
     }
     
     // 直接调用 Supabase RPC
-    console.log('searchRecipes: 开始调用Supabase RPC函数search_recipes...');
+    console.log('searchRecipes: 开始调用Supabase RPC函数search_recipes，传递所有语义搜索阈值...');
     const startTime = Date.now();
     const { data, error } = await supabase.rpc('search_recipes', rpcParams);
     const endTime = Date.now();
@@ -720,6 +752,6 @@ export async function getRecipesByIds(ids: string[]): Promise<any[]> {
   }
 }
 
-// 定义版本常量
-export const DATA_SERVICE_VERSION = '1.0.2';
-export const SEARCH_VERSION = '1.0.2';
+// 定义版本常量 - 使用配置中的版本号
+export const DATA_SERVICE_VERSION = SEARCH_CONFIG.VERSION;
+export const SEARCH_VERSION = SEARCH_CONFIG.VERSION;

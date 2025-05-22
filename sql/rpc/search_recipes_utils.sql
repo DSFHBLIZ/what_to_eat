@@ -3,6 +3,9 @@
 -- 包含搜索菜谱所需的辅助函数
 -- 此文件是模块化重构的一部分
 
+-- 在顶部添加引用配置文件
+\i ../config/search_thresholds.sql
+
 -- 检查并启用pg_trgm扩展，支持模糊匹配和相似度计算
 DO $$
 BEGIN
@@ -49,7 +52,7 @@ BEGIN
         -- 长词使用传统的trigram匹配
         ELSE
             input_str % search_term OR search_term % input_str OR
-            similarity(input_str, search_term) > 0.3 OR
+            similarity(input_str, search_term) > get_chinese_string_match_threshold() OR
             input_str ILIKE '%' || search_term || '%'
     END;
 END;
@@ -266,25 +269,22 @@ CREATE OR REPLACE FUNCTION get_dish_name_match_score(
     similarity_threshold FLOAT
 )
 RETURNS FLOAT8 AS $$
+DECLARE
+    score FLOAT8 := 0;
 BEGIN
     -- 精确匹配
-    IF dish_name = keyword THEN
+    IF dish_name = keyword THEN 
         RETURN exact_weight;
     END IF;
     
-    -- ILIKE匹配（更强的模糊匹配）
-    IF dish_name ILIKE '%' || keyword || '%' THEN
+    -- 包含匹配
+    IF dish_name ILIKE '%' || keyword || '%' THEN 
         RETURN fuzzy_weight;
     END IF;
     
-    -- 相似度匹配，提高阈值为原来的1.5倍，以获取更多匹配
-    IF similarity(dish_name, keyword) > similarity_threshold * 0.8 THEN
-        RETURN similar_weight * similarity(dish_name, keyword) * 1.2; -- 增加20%的权重
-    END IF;
-    
-    -- 支持多语言搜索，使用自定义中文匹配函数
-    IF chinese_string_match(dish_name, keyword) THEN
-        RETURN fuzzy_weight * 0.9; -- 略低于直接模糊匹配
+    -- 相似度匹配 - 使用调整后的阈值
+    IF similarity(dish_name, keyword) > similarity_threshold * get_dish_name_adjust_factor() THEN
+        RETURN similar_weight * similarity(dish_name, keyword);
     END IF;
     
     RETURN 0;
@@ -446,7 +446,7 @@ BEGIN
                     -- trigram 相似度匹配
                     c.cat_name % category_name OR category_name % c.cat_name OR
                     -- 相似度函数匹配
-                    similarity(c.cat_name, category_name) > 0.4
+                    similarity(c.cat_name, category_name) > get_category_match_threshold()
                 )
         )
     );
@@ -507,6 +507,69 @@ BEGIN
             similarity(dish_name, keyword) > similarity_threshold OR
             -- 使用中文匹配函数
             chinese_string_match(dish_name, keyword)
+    );
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+DROP FUNCTION IF EXISTS ingredient_exact_match;
+-- 精确匹配食材
+CREATE OR REPLACE FUNCTION ingredient_exact_match(ingredients JSONB, keyword TEXT)
+RETURNS BOOLEAN AS $$
+BEGIN
+    RETURN EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(safe_jsonb_array(ingredients)) AS ingredient,
+        LATERAL (
+            SELECT (ingredient->>'名称')::text AS ingredient_name
+        ) i
+        WHERE 
+            i.ingredient_name IS NOT NULL AND
+            i.ingredient_name = keyword
+    );
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+DROP FUNCTION IF EXISTS ingredient_fuzzy_match;
+-- 模糊匹配食材
+CREATE OR REPLACE FUNCTION ingredient_fuzzy_match(ingredients JSONB, keyword TEXT)
+RETURNS BOOLEAN AS $$
+BEGIN
+    RETURN EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(safe_jsonb_array(ingredients)) AS ingredient,
+        LATERAL (
+            SELECT (ingredient->>'名称')::text AS ingredient_name
+        ) i
+        WHERE 
+            i.ingredient_name IS NOT NULL AND
+            (
+                -- 使用ILIKE进行模糊匹配
+                i.ingredient_name ILIKE '%' || keyword || '%' OR
+                keyword ILIKE '%' || i.ingredient_name || '%' OR
+                -- 使用trigram匹配
+                i.ingredient_name % keyword OR
+                keyword % i.ingredient_name
+            )
+    );
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+DROP FUNCTION IF EXISTS ingredient_similarity_match;
+-- 相似度匹配食材
+CREATE OR REPLACE FUNCTION ingredient_similarity_match(ingredients JSONB, keyword TEXT, similarity_threshold FLOAT)
+RETURNS BOOLEAN AS $$
+BEGIN
+    RETURN EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements(safe_jsonb_array(ingredients)) AS ingredient,
+        LATERAL (
+            SELECT 
+                (ingredient->>'名称')::text AS ingredient_name,
+                similarity((ingredient->>'名称')::text, keyword) AS sim_score
+        ) i
+        WHERE 
+            i.ingredient_name IS NOT NULL AND
+            i.sim_score > similarity_threshold
     );
 END;
 $$ LANGUAGE plpgsql IMMUTABLE; 
