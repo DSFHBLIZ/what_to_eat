@@ -3,6 +3,7 @@
  */
 import { safeJsonParse } from '../common/safeTypeConversions';
 import { getSupabaseClient } from '../data/dataService';
+import { KEYWORD_WEIGHTS } from '../data/searchConfig';
 
 /**
  * 关键词处理工具函数
@@ -99,32 +100,32 @@ export function buildSearchQuery(term: string, filters?: Record<string, string[]
 }
 
 /**
- * 计算关键词权重
+ * 计算关键词的权重分数
  * @param keyword 关键词
- * @param query 查询词
+ * @param query 查询文本
  * @param baseWeight 基础权重
- * @returns 计算后的权重
+ * @returns 计算后的权重分数
  */
 function calculateWeight(keyword: string, query: string, baseWeight: number): number {
   const keywordLower = keyword.toLowerCase();
   
   // 完全匹配得到最高权重
   if (keywordLower === query) {
-    return baseWeight;
+    return baseWeight * KEYWORD_WEIGHTS.EXACT_MATCH;
   }
   
   // 前缀匹配得到较高权重
   if (keywordLower.startsWith(query)) {
-    return baseWeight * 0.8;
+    return baseWeight * KEYWORD_WEIGHTS.PREFIX_MATCH;
   }
   
   // 包含关系得到中等权重
   if (keywordLower.includes(query)) {
-    return baseWeight * 0.6;
+    return baseWeight * KEYWORD_WEIGHTS.CONTAINS_MATCH;
   }
   
   // 最低匹配权重
-  return baseWeight * 0.3;
+  return baseWeight * KEYWORD_WEIGHTS.MINIMAL_MATCH;
 }
 
 /**
