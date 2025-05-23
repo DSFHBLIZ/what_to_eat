@@ -17,7 +17,7 @@ CREATE OR REPLACE FUNCTION score_required_ingredients(
 )
 RETURNS FLOAT8 AS $$
 BEGIN
-    -- 调用通用食材评分函数，对必选食材使用更高的杂质惩罚系数
+    -- 调用通用食材评分函数，对必选食材使用适度的杂质惩罚系数
     RETURN score_ingredients(
         IN_食材,
         required_ingredients,
@@ -25,7 +25,7 @@ BEGIN
         score_weight_required_ingredient_exact,
         score_weight_required_ingredient_fuzzy,
         score_weight_required_ingredient_similar,
-        2.5  -- 必选食材的杂质惩罚系数更高
+        get_penalty_factor_required_ingredients()  -- 使用函数替代硬编码
     );
 END;
 $$ LANGUAGE plpgsql;
@@ -40,7 +40,7 @@ CREATE OR REPLACE FUNCTION score_ingredients(
     score_weight_exact FLOAT8,     -- 精确匹配权重
     score_weight_fuzzy FLOAT8,     -- 模糊匹配权重
     score_weight_similar FLOAT8,   -- 相似度匹配权重
-    penalty_factor FLOAT8 DEFAULT 2.0  -- 杂质惩罚系数
+    penalty_factor FLOAT8 DEFAULT get_penalty_factor_default()  -- 未命中惩罚因子 (使用配置函数获取默认值)
 )
 RETURNS FLOAT8 AS $$
 DECLARE
@@ -51,7 +51,6 @@ DECLARE
     matched_count INTEGER := 0;        -- 匹配到的项目数量
     recipe_item_count INTEGER := 0;    -- 菜谱中的项目总数量
     match_ratio FLOAT8 := 0;           -- 匹配比例
-    impurity_ratio FLOAT8 := 0;        -- 杂质比例
     impurity_penalty FLOAT8 := 0;      -- 杂质惩罚
     raw_score FLOAT8 := 0;             -- 原始得分
     normalized_score FLOAT8 := 0;      -- 归一化得分(0-10)
@@ -65,7 +64,7 @@ BEGIN
     -- 计算菜谱中项目总数
     SELECT jsonb_array_length(safe_jsonb_array(IN_数据)) INTO recipe_item_count;
     if recipe_item_count IS NULL OR recipe_item_count = 0 THEN
-        recipe_item_count := 1; -- 避免除零错误
+        recipe_item_count := get_min_item_count_to_avoid_division_by_zero(); -- 避免除零错误
     END IF;
     
     -- 计算用户提供的项目数量
@@ -96,11 +95,14 @@ BEGIN
     -- 计算匹配比例
     match_ratio := GREATEST(matched_count::FLOAT / GREATEST(item_count, 1)::FLOAT, 0);
     
-    -- 计算杂质比例（菜谱中未匹配的项目占比）
-    impurity_ratio := GREATEST((recipe_item_count - matched_count)::FLOAT / recipe_item_count::FLOAT, 0);
-    
-    -- 计算杂质惩罚
-    impurity_penalty := impurity_ratio * penalty_factor;
+    -- 杂质惩罚计算：
+    -- 杂质惩罚基于菜谱食材数量与匹配搜索词数量的比例
+    -- 适度惩罚包含过多无关食材的菜谱
+    IF penalty_factor > 0 THEN
+        impurity_penalty := GREATEST((recipe_item_count - matched_count)::FLOAT / recipe_item_count::FLOAT * penalty_factor, 0);
+    ELSE
+        impurity_penalty := 0;
+    END IF;
     
     -- 原始得分 = 总分 * 匹配比例 - 杂质惩罚
     raw_score := total_score * match_ratio - impurity_penalty;
@@ -113,10 +115,10 @@ BEGIN
     END IF;
     
     -- 将得分归一化到0-10范围
-    normalized_score := (raw_score / max_possible_score) * 10.0;
+    normalized_score := (raw_score / max_possible_score) * get_normalization_max_score();
     
     -- 确保得分在0-10范围内
-    RETURN GREATEST(LEAST(normalized_score, 10.0), 0);
+    RETURN GREATEST(LEAST(normalized_score, get_normalization_max_score()), get_normalization_min_score());
 END;
 $$ LANGUAGE plpgsql;
 
@@ -141,7 +143,7 @@ BEGIN
         score_weight_optional_ingredient_exact,
         score_weight_optional_ingredient_fuzzy,
         score_weight_optional_ingredient_similar,
-        2.0  -- 杂质惩罚系数
+        get_penalty_factor_default()  -- 可选食材搜索使用默认的杂质惩罚
     );
 END;
 $$ LANGUAGE plpgsql;
@@ -178,7 +180,7 @@ CREATE OR REPLACE FUNCTION score_optional_condiments(
 )
 RETURNS FLOAT8 AS $$
 BEGIN
-    -- 调用通用食材评分函数，但使用较低的杂质惩罚系数
+    -- 调用通用食材评分函数，使用适度的杂质惩罚系数
     RETURN score_ingredients(
         IN_调料,
         optional_condiments,
@@ -186,7 +188,7 @@ BEGIN
         score_weight_optional_condiment_exact,
         score_weight_optional_condiment_fuzzy,
         score_weight_optional_condiment_similar,
-        1.5  -- 调料杂质惩罚系数较低
+        get_penalty_factor_default()  -- 调料也使用默认的杂质惩罚系数
     );
 END;
 $$ LANGUAGE plpgsql;
@@ -337,22 +339,22 @@ BEGIN
         IF keyword_score > 0 THEN
             keyword_count := keyword_count + 1;
             -- 第一个匹配的关键词获得全部分数，后续关键词递减
-            total_score := total_score + (keyword_score * POWER(0.7, keyword_count - 1));
+            total_score := total_score + (keyword_score * POWER(get_keyword_decay_factor(), keyword_count - 1));
         END IF;
     END LOOP;
     
-    -- 确保总分不超过最高单一关键词分数的2倍，防止过度累加
-    total_score := LEAST(total_score, max_keyword_score * 2);
+    -- 确保总分不超过最高单一关键词分数的合理倍数，防止过度累加
+    total_score := LEAST(total_score, max_keyword_score * get_keyword_score_multiplier_limit());
     
     -- 归一化到0-10范围
     IF max_possible_score <= 0 THEN
         RETURN 0;
     END IF;
     
-    normalized_score := (total_score / max_possible_score) * 10.0;
+    normalized_score := (total_score / max_possible_score) * get_normalization_max_score();
     
     -- 确保得分在0-10范围内
-    RETURN GREATEST(LEAST(normalized_score, 10.0), 0);
+    RETURN GREATEST(LEAST(normalized_score, get_normalization_max_score()), get_normalization_min_score());
 END;
 $$ LANGUAGE plpgsql;
 
@@ -455,10 +457,10 @@ BEGIN
         RETURN 0;
     END IF;
     
-    normalized_score := (score / max_possible_score) * 10.0;
+    normalized_score := (score / max_possible_score) * get_normalization_max_score();
     
     -- 确保得分在0-10范围内
-    RETURN GREATEST(LEAST(normalized_score, 10.0), 0);
+    RETURN GREATEST(LEAST(normalized_score, get_normalization_max_score()), get_normalization_min_score());
 END;
 $$ LANGUAGE plpgsql;
 
@@ -469,7 +471,7 @@ CREATE OR REPLACE FUNCTION normalize_optional_score(
     total_matched_score FLOAT8,     -- 已匹配项的总得分
     total_options_count INTEGER,    -- 用户提供的可选项总数量
     max_weight_per_item FLOAT8,     -- 每项可选项的最大权重
-    penalty_factor FLOAT8 DEFAULT 0.4  -- 未命中惩罚因子 (0-1之间)
+    penalty_factor FLOAT8 DEFAULT get_penalty_factor_default()  -- 未命中惩罚因子 (使用配置函数获取默认值)
 )
 RETURNS FLOAT8 AS $$
 DECLARE
@@ -491,10 +493,10 @@ BEGIN
     matching_ratio := total_matched_score / max_possible_score;
     
     -- 计算未命中惩罚（低命中率时的惩罚会更大）
-    -- 当匹配率低于50%时开始应用惩罚
-    IF matching_ratio < 0.5 THEN
+    -- 当匹配率低于可选匹配阈值时开始应用惩罚
+    IF matching_ratio < get_optional_matching_threshold() THEN
         -- 惩罚随匹配率降低而增加
-        missing_penalty := (0.5 - matching_ratio) * penalty_factor * max_possible_score;
+        missing_penalty := (get_optional_matching_threshold() - matching_ratio) * penalty_factor * max_possible_score;
     END IF;
     
     -- 计算初步归一化得分
@@ -502,10 +504,10 @@ BEGIN
     normalized_score := GREATEST(normalized_score, 0); -- 确保不为负数
     
     -- 转化为0-10范围
-    final_score := (normalized_score / max_possible_score) * 10.0;
+    final_score := (normalized_score / max_possible_score) * get_normalization_max_score();
     
     -- 确保得分在0-10范围内
-    RETURN GREATEST(LEAST(final_score, 10.0), 0);
+    RETURN GREATEST(LEAST(final_score, get_normalization_max_score()), get_normalization_min_score());
 END;
 $$ LANGUAGE plpgsql;
 
@@ -533,7 +535,7 @@ BEGIN
     
     -- 计算余弦相似度 (1 - 距离)
     -- PostgreSQL的向量运算符 <=> 计算两个向量之间的余弦距离
-    similarity_score := 1 - (recipe_embedding <=> query_embedding);
+    similarity_score := get_semantic_cosine_base() - (recipe_embedding <=> query_embedding);
     
     -- 如果相似度低于阈值，返回0
     IF similarity_score < effective_threshold THEN
@@ -548,10 +550,10 @@ BEGIN
         RETURN 0;
     END IF;
     
-    normalized_score := (raw_score / 10.0) * 10.0;
+    normalized_score := (raw_score / get_semantic_normalization_factor()) * get_normalization_max_score();
     
     -- 确保得分在0-10范围内
-    RETURN GREATEST(LEAST(normalized_score, 10.0), 0);
+    RETURN GREATEST(LEAST(normalized_score, get_normalization_max_score()), get_normalization_min_score());
 END;
 $$ LANGUAGE plpgsql;
 
@@ -661,10 +663,10 @@ BEGIN
         RETURN 0;
     END IF;
     
-    normalized_score := (total_score / max_possible_score) * 10.0;
+    normalized_score := (total_score / max_possible_score) * get_normalization_max_score();
     
     -- 确保得分在0-10范围内
-    RETURN GREATEST(LEAST(normalized_score, 10.0), 0);
+    RETURN GREATEST(LEAST(normalized_score, get_normalization_max_score()), get_normalization_min_score());
 END;
 $$ LANGUAGE plpgsql;
 
@@ -729,10 +731,10 @@ BEGIN
     
     -- 归一化到0-10范围
     -- 假设满分(所有口味都匹配)应该是10分
-    normalized_score := (match_ratio * 10.0);
-    
+    normalized_score := (match_ratio * get_normalization_max_score());
+
     -- 确保得分在0-10范围内
-    RETURN GREATEST(LEAST(normalized_score, 10.0), 0);
+    RETURN GREATEST(LEAST(normalized_score, get_normalization_max_score()), get_normalization_min_score());
 END;
 $$ LANGUAGE plpgsql;
 
@@ -810,10 +812,10 @@ BEGIN
         RETURN 0;
     END IF;
     
-    normalized_score := (total_score / max_possible_score) * 10.0;
+    normalized_score := (total_score / max_possible_score) * get_normalization_max_score();
     
     -- 确保得分在0-10范围内
-    RETURN GREATEST(LEAST(normalized_score, 10.0), 0);
+    RETURN GREATEST(LEAST(normalized_score, get_normalization_max_score()), get_normalization_min_score());
 END;
 $$ LANGUAGE plpgsql;
 
@@ -868,9 +870,9 @@ BEGIN
     END IF;
     
     -- 将得分归一化到0-10范围
-    normalized_score := (total_score / max_possible_score) * 10.0;
+    normalized_score := (total_score / max_possible_score) * get_normalization_max_score();
     
     -- 确保得分在0-10范围内
-    RETURN GREATEST(LEAST(normalized_score, 10.0), 0);
+    RETURN GREATEST(LEAST(normalized_score, get_normalization_max_score()), get_normalization_min_score());
 END;
 $$ LANGUAGE plpgsql;

@@ -414,68 +414,10 @@ export async function searchRecipes({
     });
     
     // 组装 RPC 参数
-    const rpcParams: {
-      search_query: string;
-      required_ingredients: string[];
-      optional_ingredients: string[];
-      optional_condiments: string[];
-      dish_name_keywords: string[];
-      cuisines: string[];
-      flavors: string[];
-      difficulties: string[];
-      dietary_restrictions: string[];
-      required_ingredient_categories: string[];
-      optional_ingredient_categories: string[];
-      required_condiment_categories: string[];
-      optional_condiment_categories: string[];
-      page: number;
-      page_size: number;
-      sort_field: string;
-      sort_direction: string;
-      return_all_results: boolean;
-      debug_mode: boolean;
-      stabilize_results: boolean;
-      trgm_similarity_threshold: number;
-      forbidden_ingredients: string[];
-      preview_mode: boolean;
-      preview_page_count: number;
-      enable_semantic_search: boolean;
-      semantic_threshold: number;
-      forbidden_ingredients_threshold: number;
-      required_ingredients_threshold: number;
-      general_search_threshold: number;
-    } = {
-      search_query: finalSearchQuery,
-      required_ingredients: finalRequiredIngredients,
-      optional_ingredients: finalOptionalIngredients,
-      optional_condiments: [], // 已由optional_ingredients统一处理
-      dish_name_keywords: finalSearchQuery ? [finalSearchQuery] : [],
-      cuisines: ensureArray(cuisines),
-      flavors: ensureArray(flavors),
-      difficulties: ensureArray(difficulties),
-      dietary_restrictions: ensureArray(dietaryRestrictions),
-      required_ingredient_categories: [],
-      optional_ingredient_categories: [],
-      required_condiment_categories: [],
-      optional_condiment_categories: [],
-      page: validatedPage,
-      page_size: validatedPageSize,
-      sort_field: mappedSortField,
-      sort_direction: (sortDirection || 'asc').toUpperCase(),
-      return_all_results: false,
-      debug_mode: true, // 启用调试模式以返回更多统计信息
-      stabilize_results: true,
-      trgm_similarity_threshold: TRGM_SIMILARITY_THRESHOLD,
-      forbidden_ingredients: finalAvoidIngredients,
-      preview_mode: false,
-      preview_page_count: 1,
-      enable_semantic_search: false, // 默认不启用语义搜索，后面会根据条件修改
-      semantic_threshold: effectiveThreshold,
-      forbidden_ingredients_threshold: forbiddenIngredientsThreshold,
-      required_ingredients_threshold: requiredIngredientsThreshold,
-      general_search_threshold: generalSearchThreshold
-    };
-
+    const requiredIngredientsArray = finalRequiredIngredients.map(i => i.toString());
+    const optionalIngredientsArray = finalOptionalIngredients.map(i => i.toString());
+    const forbiddenIngredientsArray = finalAvoidIngredients.map(i => i.toString());
+    
     // 检查是否有可能启用语义搜索
     const canUseSemanticSearch = finalSearchQuery.length > 0 || finalRequiredIngredients.length > 0;
     console.log('searchRecipes: 是否适合语义搜索:', canUseSemanticSearch);
@@ -494,60 +436,48 @@ export async function searchRecipes({
     const finalEnableSemanticSearch = hasOpenAIKey && canUseSemanticSearch && enableSemanticSearch;
     console.log('searchRecipes: 最终决定是否启用语义搜索:', finalEnableSemanticSearch);
     
-    // 设置RPC参数中的语义搜索标志
-    if (finalEnableSemanticSearch) {
-      console.log('searchRecipes: 尝试使用语义搜索增强结果...');
-      rpcParams.enable_semantic_search = true;
+    // 如果启用语义搜索并有嵌入向量，直接设置RPC参数
+    if (finalEnableSemanticSearch && queryEmbedding) {
+      console.log('searchRecipes: 启用语义搜索，嵌入向量已生成');
     } else {
-      console.log('searchRecipes: 使用传统搜索方法');
-      rpcParams.enable_semantic_search = false;
+      console.log('searchRecipes: 不启用语义搜索或未提供嵌入向量');
     }
     
+    // 优化RPC参数，减少不必要的开销
+    const rpcParams = {
+      search_query: searchQuery || '',
+      required_ingredients: requiredIngredientsArray,
+      optional_ingredients: optionalIngredientsArray,
+      optional_condiments: [],
+      dish_name_keywords: [],
+      cuisines: cuisines || [],
+      flavors: flavors || [],
+      difficulties: difficulties || [],
+      dietary_restrictions: dietaryRestrictions || [],
+      required_ingredient_categories: [],
+      optional_ingredient_categories: [],
+      required_condiment_categories: [],
+      optional_condiment_categories: [],
+      forbidden_ingredients: forbiddenIngredientsArray,
+      page: page,
+      page_size: Math.min(pageSize, 50), // 限制最大页面大小
+      sort_field: sortField,
+      sort_direction: sortDirection.toUpperCase(),
+      return_all_results: false,
+      debug_mode: false, // 关闭调试模式提高性能
+      stabilize_results: false, // 关闭结果稳定化提高性能
+      trgm_similarity_threshold: SEMANTIC_SEARCH_THRESHOLDS.RELAXED, // 使用较宽松的阈值
+      preview_mode: false,
+      preview_page_count: 1,
+      enable_semantic_search: finalEnableSemanticSearch,
+      semantic_threshold: SEMANTIC_SEARCH_THRESHOLDS.DEFAULT,
+      forbidden_ingredients_threshold: SEMANTIC_SEARCH_THRESHOLDS.STRICT,
+      required_ingredients_threshold: SEMANTIC_SEARCH_THRESHOLDS.REQUIRED_INGREDIENTS,
+      general_search_threshold: SEMANTIC_SEARCH_THRESHOLDS.DEFAULT
+    };
+
     // 记录最终的RPC参数
     console.log('searchRecipes: RPC参数', JSON.stringify(rpcParams, null, 2));
-    
-    // 如果启用语义搜索并有嵌入向量，增加相关RPC调用
-    if (finalEnableSemanticSearch && queryEmbedding) {
-      // 使用数据库函数进行语义搜索
-      try {
-        // 修改为使用API端点而不是直接RPC调用
-        if (typeof window !== 'undefined') {
-          // 在浏览器环境中
-          console.log('searchRecipes: 通过API端点缓存嵌入向量');
-          const cacheResponse = await fetch('/api/embedding/cache', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ text: searchQuery }),
-          });
-          
-          if (!cacheResponse.ok) {
-            console.warn('searchRecipes: 缓存嵌入向量失败，将继续搜索但可能不使用语义搜索');
-          } else {
-            console.log('searchRecipes: 成功缓存嵌入向量');
-          }
-        } else {
-          // 在服务器端环境中，更安全地尝试RPC调用
-          console.log('searchRecipes: 服务器端尝试缓存嵌入向量');
-          const { error: rpcError } = await supabase.rpc('cache_query_embedding', {
-            query_text: searchQuery,
-            query_vector: queryEmbedding
-          });
-          
-          if (rpcError) {
-            console.warn('searchRecipes: 服务器端缓存嵌入向量失败:', rpcError);
-          }
-        }
-        
-        // 设置语义搜索标志
-        rpcParams.enable_semantic_search = true;
-      } catch (error) {
-        console.error('设置语义搜索参数失败:', error);
-        // 出错时依然尝试继续搜索，但不使用语义搜索
-        rpcParams.enable_semantic_search = false;
-      }
-    }
     
     // 直接调用 Supabase RPC
     console.log('searchRecipes: 开始调用Supabase RPC函数search_recipes，传递所有语义搜索阈值...');
@@ -587,13 +517,13 @@ export async function searchRecipes({
       // 获取总数 - 修复分页问题
       // RPC函数返回的result_filtered_count字段包含总记录数
       if (data.length > 0) {
-        // 优先使用result_filtered_count字段
-        if (typeof data[0].result_filtered_count !== 'undefined') {
+        // 优先使用result_filtered_count字段（即使记录本身是NULL，元数据也会存在）
+        if (typeof data[0].result_filtered_count !== 'undefined' && data[0].result_filtered_count !== null) {
           total = parseInt(String(data[0].result_filtered_count), 10);
           console.log('从result_filtered_count获取到总记录数:', total);
         } 
         // 尝试从filtered_count字段获取
-        else if (typeof data[0].filtered_count !== 'undefined') {
+        else if (typeof data[0].filtered_count !== 'undefined' && data[0].filtered_count !== null) {
           total = parseInt(String(data[0].filtered_count), 10);
           console.log('从filtered_count获取到总记录数:', total);
         }
@@ -625,8 +555,14 @@ export async function searchRecipes({
         total = 0;
       }
       
-      // 转换返回结果为前端模型
+      // 转换返回结果为前端模型 - 过滤掉NULL记录（元数据记录）
       for (const item of data) {
+        // 跳过用于传递元数据的NULL记录
+        if (item.id === null || item.id === undefined) {
+          console.log('跳过元数据记录，总记录数已从该记录获取');
+          continue;
+        }
+        
         const recipe = dbRecordToFrontendModel(item);
         // 合并相关性得分，用于显示
         if (typeof item.relevance_score === 'number') {

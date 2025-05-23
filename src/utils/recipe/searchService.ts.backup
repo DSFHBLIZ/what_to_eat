@@ -1,6 +1,8 @@
 import { Recipe } from '../../types/recipe';
 import { getSupabaseClient } from '../data/dataService';
 import { SEARCH_CONFIG } from '../data/searchConfig'; // 导入搜索配置
+import { safeLog } from '../common/safeConsole';
+import { optimizePerformance } from '../performance/performanceMonitor';
 
 // 搜索结果缓存机制
 const searchCache = new Map<string, Recipe[]>();

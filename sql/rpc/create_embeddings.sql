@@ -1,6 +1,60 @@
 -- 创建菜谱嵌入向量表和索引的SQL脚本
 -- 此脚本用于设置pgvector扩展和向量搜索所需的表结构
 
+-- 检查并创建必需的配置函数（如果不存在）
+-- 这些函数的完整定义在search_thresholds.sql中
+-- 重要：请确保在运行此脚本之前先运行search_thresholds.sql以获得正确的配置函数
+DO $$
+BEGIN
+    -- 检查get_semantic_default_threshold函数是否存在
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_proc 
+        WHERE proname = 'get_semantic_default_threshold' 
+        AND pronargs = 0
+    ) THEN
+        -- 临时创建函数（仅在配置函数不存在时）
+        CREATE OR REPLACE FUNCTION get_semantic_default_threshold()
+        RETURNS FLOAT AS $func$
+        BEGIN
+            -- 临时硬编码值，运行search_thresholds.sql后会被覆盖
+            RETURN 0.55; 
+        END;
+        $func$ LANGUAGE plpgsql IMMUTABLE;
+    END IF;
+
+    -- 检查get_default_page_size函数是否存在
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_proc 
+        WHERE proname = 'get_default_page_size' 
+        AND pronargs = 0
+    ) THEN
+        -- 临时创建函数（仅在配置函数不存在时）
+        CREATE OR REPLACE FUNCTION get_default_page_size()
+        RETURNS INTEGER AS $func$
+        BEGIN
+            -- 临时硬编码值，运行search_thresholds.sql后会被覆盖
+            RETURN 10; 
+        END;
+        $func$ LANGUAGE plpgsql IMMUTABLE;
+    END IF;
+
+    -- 检查get_semantic_cosine_base函数是否存在
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_proc 
+        WHERE proname = 'get_semantic_cosine_base' 
+        AND pronargs = 0
+    ) THEN
+        -- 临时创建函数（仅在配置函数不存在时）
+        CREATE OR REPLACE FUNCTION get_semantic_cosine_base()
+        RETURNS FLOAT AS $func$
+        BEGIN
+            -- 临时硬编码值，运行search_thresholds.sql后会被覆盖
+            RETURN 1.0; 
+        END;
+        $func$ LANGUAGE plpgsql IMMUTABLE;
+    END IF;
+END $$;
+
 -- 启用pgvector扩展
 CREATE EXTENSION IF NOT EXISTS vector;
 
@@ -56,10 +110,12 @@ CREATE TABLE IF NOT EXISTS query_embeddings_cache (
 CREATE INDEX IF NOT EXISTS query_embeddings_cache_created_at_idx ON query_embeddings_cache (created_at);
 
 -- 创建语义搜索函数
+-- 注意：此函数依赖search_thresholds.sql中定义的配置函数
+-- 如果search_thresholds.sql尚未执行，请先执行该文件
 CREATE OR REPLACE FUNCTION search_recipes_by_embedding(
     query_embedding vector(1536),
-    match_threshold FLOAT DEFAULT 0.5,
-    match_count INT DEFAULT 10
+    match_threshold FLOAT DEFAULT get_semantic_default_threshold(),
+    match_count INT DEFAULT get_default_page_size()
 )
 RETURNS TABLE (
     id UUID,
@@ -156,7 +212,8 @@ BEGIN
     END IF;
     
     -- 计算余弦相似度并返回加权分数
-    v_embedding_semantic_score := (1 - (recipe_embedding <=> query_embedding)) * weight;
+    -- 使用配置函数获取余弦相似度基准值
+    v_embedding_semantic_score := (get_semantic_cosine_base() - (recipe_embedding <=> query_embedding)) * weight;
     
     RETURN COALESCE(v_embedding_semantic_score, 0);
 END;

@@ -107,6 +107,23 @@ export async function GET(request: NextRequest) {
     
     console.log(`API: 搜索参数 [${requestId}]:`, JSON.stringify(searchParamsObj, null, 2));
     
+    // 特别调试第二页及以后的请求
+    if (searchParamsObj.page > 1) {
+      console.log(`[API-DEBUG] ==================== 第${searchParamsObj.page}页请求详细分析 ====================`);
+      console.log('- URL参数原始值:', Object.fromEntries(searchParams.entries()));
+      console.log('- 解析后的搜索参数:', JSON.stringify(searchParamsObj, null, 2));
+      console.log('- 是否有搜索关键词:', !!searchParamsObj.searchQuery);
+      console.log('- 是否有筛选条件:', 
+        searchParamsObj.requiredIngredients.length > 0 ||
+        searchParamsObj.optionalIngredients.length > 0 ||
+        searchParamsObj.cuisines.length > 0 ||
+        searchParamsObj.difficulties.length > 0 ||
+        searchParamsObj.flavors.length > 0 ||
+        searchParamsObj.dietaryRestrictions.length > 0
+      );
+      console.log('=====================================');
+    }
+    
     // 添加调试信息 - 记录必选食材
     if (searchParamsObj.requiredIngredients.length > 0) {
       console.log(`API: 详细跟踪必选食材 [${requestId}]:`);
@@ -139,32 +156,10 @@ export async function GET(request: NextRequest) {
         queryEmbedding = await generateEmbedding(semanticSearchInput);
         console.log(`API: 成功为输入"${semanticSearchInput}"生成嵌入向量，维度: ${queryEmbedding?.length}`);
 
-        // 仅当嵌入向量有效时才尝试缓存
-        if (queryEmbedding && queryEmbedding.length > 0) {
-          try {
-            // 创建Supabase客户端
-            const supabase = getSupabaseClient();
-            if (supabase) {
-              console.log(`API: 尝试缓存输入"${semanticSearchInput}"的有效嵌入向量`);
-              
-              const { error: rpcError } = await supabase.rpc('cache_query_embedding', {
-                query_text: semanticSearchInput,
-                query_vector: queryEmbedding
-              });
-              
-              if (rpcError) {
-                console.warn(`API: 缓存有效嵌入向量失败，但继续搜索:`, rpcError.message);
-              } else {
-                console.log(`API: 成功缓存有效嵌入向量`);
-              }
-            }
-          } catch (cacheError) {
-            console.error(`API: 缓存有效嵌入向量过程中发生错误:`, cacheError);
-            // 不阻止搜索流程继续
-          }
-        } else {
-          console.warn(`API: 生成的嵌入向量无效或为空 for input "${semanticSearchInput}"，不进行缓存。`);
-        }
+        // 注意：generateEmbedding 内部已经处理了缓存逻辑
+        // 如果是从缓存获取的，就不需要再次缓存
+        // 这里删除重复的缓存逻辑，避免不必要的RPC调用
+        
       } catch (error) {
         console.error(`API: 生成嵌入向量失败 for input "${semanticSearchInput}":`, error);
         // queryEmbedding 将保持为 null，不会尝试缓存空向量
@@ -176,8 +171,9 @@ export async function GET(request: NextRequest) {
     try {
       console.log(`API: 调用searchRecipes函数，queryEmbedding是否存在: ${queryEmbedding ? '是' : '否'}`);
       console.log(`API: enableSemanticSearch设置为: ${!!queryEmbedding}`);
-      // 修改searchRecipes调用，添加嵌入向量参数
-      const { recipes, total, error } = await searchRecipes({
+      
+      // 优化：设置较短的超时时间来避免长时间等待
+      const searchPromise = searchRecipes({
         searchQuery: searchParamsObj.searchQuery,
         requiredIngredients: searchParamsObj.requiredIngredients,
         optionalIngredients: searchParamsObj.optionalIngredients,
@@ -193,6 +189,13 @@ export async function GET(request: NextRequest) {
         queryEmbedding,
         enableSemanticSearch: !!queryEmbedding
       });
+      
+      // 设置20秒超时保护，避免请求挂起
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('搜索请求超时')), 20000);
+      });
+      
+      const { recipes, total, error } = await Promise.race([searchPromise, timeoutPromise]) as any;
       
       if (error) {
         console.error(`API: 搜索失败:`, error);

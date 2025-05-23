@@ -18,30 +18,21 @@ const inter = Inter({
 
 // 元数据
 export const metadata: Metadata = {
-  title: '今天吃什么 - 找到你想做的美食',
-  description: '基于你家现有食材推荐食谱，解决每天"吃什么"的难题',
-  keywords: '菜谱, 食谱, 推荐, 智能, 搜索, 今天吃什么, 做饭, 食材',
+  title: '冰箱里有什么？ - 智能菜谱推荐',
+  description: '根据冰箱现有食材智能推荐菜谱，解决每天"今天吃什么"的难题。简单家常菜做法，10分钟快手菜，让做饭变得轻松有趣。',
+  keywords: '冰箱里有什么, 今天吃什么, 晚饭吃什么, 中午吃什么, 家常菜做法, 简单菜谱, 快手菜, 懒人菜谱, 食材搭配',
   metadataBase: new URL(process.env.NEXT_PUBLIC_BASE_URL || 'https://whattoeat.vercel.app'),
   openGraph: {
-    title: '今天吃什么 - 智能菜谱推荐',
-    description: '基于你家现有食材推荐食谱，解决每天"吃什么"的难题',
+    title: '冰箱里有什么？ - 智能菜谱推荐',
+    description: '根据冰箱现有食材智能推荐菜谱，解决每天"今天吃什么"的难题',
     locale: 'zh_CN',
     type: 'website',
-    siteName: '今天吃什么',
-    images: [
-      {
-        url: '/images/og-image.jpg',
-        width: 1200,
-        height: 630,
-        alt: '今天吃什么 - 智能菜谱推荐平台',
-      }
-    ],
+    siteName: '冰箱里有什么？',
   },
   twitter: {
-    card: 'summary_large_image',
-    title: '今天吃什么 - 智能菜谱推荐',
-    description: '基于你家现有食材推荐食谱，解决每天"吃什么"的难题',
-    images: ['/images/twitter-card.jpg'],
+    card: 'summary',
+    title: '冰箱里有什么？ - 智能菜谱推荐',
+    description: '根据冰箱现有食材智能推荐菜谱，解决每天"今天吃什么"的难题',
   },
   robots: {
     index: true,
@@ -49,7 +40,7 @@ export const metadata: Metadata = {
     googleBot: {
       index: true,
       follow: true,
-      'max-image-preview': 'large',
+      'max-image-preview': 'none',
       'max-snippet': -1,
     },
   },

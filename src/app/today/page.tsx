@@ -3,8 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-// 使用客户端组件实现
-export default function TodayClientPage() {
+export default function TodayPage() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -101,7 +100,7 @@ export default function TodayClientPage() {
         <h1 className="text-2xl font-bold mb-6">今日菜谱</h1>
         <div className="flex justify-center items-center min-h-[50vh]">
           {loading ? (
-            <div className="text-gray-500">
+            <div className="flex items-center text-gray-500">
               <svg className="animate-spin h-10 w-10 mr-3" viewBox="0 0 24 24">
                 <circle 
                   className="opacity-25" 

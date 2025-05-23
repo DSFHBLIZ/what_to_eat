@@ -3,7 +3,7 @@ import { Recipe } from '../../types/recipe';
 
 // 全局站点基本配置
 const SITE_CONFIG = {
-  name: '今天吃什么',
+  name: '冰箱里有什么？',
   baseUrl: process.env.NEXT_PUBLIC_BASE_URL || 'https://whattoeat.vercel.app',
   defaultImage: '/images/og-image.jpg',
   twitterHandle: '@whattoeat',

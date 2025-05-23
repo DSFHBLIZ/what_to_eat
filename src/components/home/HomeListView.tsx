@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useUnifiedSearchController } from '../../controllers/useUnifiedSearchController';
 import { Filter, FilterType } from '../../types/search';
 import SearchCoordinator from '../search/SearchCoordinator';
@@ -8,6 +8,7 @@ import { getFilterOptions } from '../../config/filterSchema';
 import { OptionBase } from '../../types/filter';
 import TagsDisplay from '../search/TagsDisplay';
 import { ChevronDown, ChevronUp } from 'lucide-react';
+import { BanquetConfig } from '../../types/banquet';
 
 // 单个筛选标签的Props类型定义
 interface FilterTagProps {
@@ -51,12 +52,10 @@ const FilterTag: React.FC<FilterTagProps> = ({
  */
 interface HomeListViewProps {
   totalResults?: number;
+  controller: ReturnType<typeof useUnifiedSearchController>; // 接收控制器作为必需的 prop
 }
 
-export default function HomeListView({ totalResults = 0 }: HomeListViewProps) {
-  // 创建单一控制器实例，避免多个实例造成的干扰
-  const controller = useUnifiedSearchController();
-  
+export default function HomeListView({ totalResults = 0, controller }: HomeListViewProps) {
   // 筛选标签的展开/折叠状态
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
   // 动画标签追踪，当点击标签时添加动画效果
@@ -66,7 +65,8 @@ export default function HomeListView({ totalResults = 0 }: HomeListViewProps) {
     searchState,
     toggleFilter, 
     executeSearch,
-    setSearchState 
+    setSearchState,
+    setBanquetConfig
   } = controller;
   
   const { 
@@ -74,7 +74,8 @@ export default function HomeListView({ totalResults = 0 }: HomeListViewProps) {
     flavors, 
     difficulties, 
     dietaryRestrictions,
-    searchQuery 
+    searchQuery,
+    banquetMode
   } = searchState;
   
   // 监听筛选状态变化 - 使用useMemo减少重复渲染和日志输出
@@ -225,8 +226,144 @@ export default function HomeListView({ totalResults = 0 }: HomeListViewProps) {
     </button>
   );
   
+  // 添加状态管理
+  const [isAddingSeasonings, setIsAddingSeasonings] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [showToast, setShowToast] = useState(false);
+
+  // 常见调料列表 - 使用更全面的调料清单
+  const COMMON_SEASONINGS = [
+    '胡椒', '食盐', '酱油', '醋', '味精', '鸡精', '白糖', '冰糖', 
+    '料酒', '花椒', '辣椒', '八角', '桂皮', '香叶', '生姜', 
+    '大蒜', '葱', '芝麻油', '豆瓣酱', '豆豉', '腐乳', '蚝油', 
+    '花生酱', '芝麻酱', '五香粉'
+  ];
+
+  // 显示toast的函数
+  const showToastMessage = (message: string) => {
+    setToastMessage(message);
+    setShowToast(true);
+    setTimeout(() => {
+      setShowToast(false);
+      setTimeout(() => setToastMessage(null), 300);
+    }, 2000);
+  };
+
+  // 添加/移除常见调料的处理函数
+  const handleToggleCommonSeasonings = async () => {
+    if (isAddingSeasonings) return; // 防止重复点击
+    
+    setIsAddingSeasonings(true);
+    
+    try {
+      if (hasSeasonings) {
+        // 移除所有常见调料
+        let removedCount = 0;
+        for (const seasoning of COMMON_SEASONINGS) {
+          // 从必选食材中移除
+          const reqIngredient = searchState.requiredIngredients.find(ing => ing.tag === seasoning);
+          if (reqIngredient) {
+            controller.removeRequiredIngredient(reqIngredient.id);
+            removedCount++;
+          }
+          
+          // 从可选食材中移除
+          const optIngredient = searchState.optionalIngredients.find(ing => ing.tag === seasoning);
+          if (optIngredient) {
+            controller.removeOptionalIngredient(optIngredient.id);
+            removedCount++;
+          }
+          
+          // 从忌口食材中移除
+          const avoidIngredient = searchState.avoidIngredients.find(ing => ing.tag === seasoning);
+          if (avoidIngredient) {
+            controller.removeAvoidIngredient(avoidIngredient.id);
+            removedCount++;
+          }
+        }
+        
+        showToastMessage(`已移除${removedCount}种常见调料`);
+      } else {
+        // 添加调料
+        let newlyAdded = 0;
+        let toAddCount = 0;
+        
+        // 先统计有多少新调料需要添加
+        for (const seasoning of COMMON_SEASONINGS) {
+          const isAlreadyAdded = 
+            searchState.requiredIngredients.some(ing => ing.tag === seasoning) ||
+            searchState.optionalIngredients.some(ing => ing.tag === seasoning) ||
+            searchState.avoidIngredients.some(ing => ing.tag === seasoning);
+          
+          if (!isAlreadyAdded) {
+            toAddCount++;
+          }
+        }
+        
+        // 如果没有需要添加的调料，直接返回
+        if (toAddCount === 0) {
+          showToastMessage('所有常见调料都已添加过了！');
+          setIsAddingSeasonings(false);
+          return;
+        }
+        
+        // 一次性快速添加所有调料
+        for (const seasoning of COMMON_SEASONINGS) {
+          const isAlreadyAdded = 
+            searchState.requiredIngredients.some(ing => ing.tag === seasoning) ||
+            searchState.optionalIngredients.some(ing => ing.tag === seasoning) ||
+            searchState.avoidIngredients.some(ing => ing.tag === seasoning);
+          
+          if (!isAlreadyAdded) {
+            const seasoningTag = {
+              id: `seasoning-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+              tag: seasoning,
+              type: FilterType.SEASONING as const
+            };
+            controller.addOptionalIngredient(seasoningTag);
+            newlyAdded++;
+          }
+        }
+        
+        showToastMessage(`成功添加了${newlyAdded}种常见调料！`);
+      }
+      
+      // 保持开关动画状态一段时间
+      setTimeout(() => {
+        setIsAddingSeasonings(false);
+      }, 800);
+      
+    } catch (error) {
+      setIsAddingSeasonings(false);
+      showToastMessage('操作调料时出现错误，请重试');
+    }
+  };
+
+  // 检查是否已经有调料被添加
+  const hasSeasonings = useMemo(() => {
+    return COMMON_SEASONINGS.some(seasoning => 
+      searchState.requiredIngredients.some(ing => ing.tag === seasoning) ||
+      searchState.optionalIngredients.some(ing => ing.tag === seasoning) ||
+      searchState.avoidIngredients.some(ing => ing.tag === seasoning)
+    );
+  }, [searchState.requiredIngredients, searchState.optionalIngredients, searchState.avoidIngredients]);
+
   return (
-    <div className="w-full">
+    <div className="home-list-view">
+      {/* Toast 通知 */}
+      {toastMessage && (
+        <div className={`fixed top-4 right-4 z-50 max-w-sm bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg transform transition-all duration-300 ${
+          showToast ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'
+        }`}>
+          <div className="flex items-center space-x-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            <span className="text-sm font-medium">{toastMessage}</span>
+          </div>
+        </div>
+      )}
+
       {/* 搜索区域 - 应用新样式 */}
       <div className="search-area mb-8">
         {/* 使用SearchCoordinator组件，共享同一个控制器 */}
@@ -239,7 +376,7 @@ export default function HomeListView({ totalResults = 0 }: HomeListViewProps) {
           filterButton={FilterButton}
         />
       </div>
-      
+
       {/* 折叠的筛选内容区域 - 只移除负margin */}
       {isFiltersExpanded && (
         <div className="filter-content-standalone mb-4" style={{ marginTop: '-1rem' }}>
@@ -318,7 +455,35 @@ export default function HomeListView({ totalResults = 0 }: HomeListViewProps) {
       {/* 保留已选中的筛选标签显示 - 同时包含食材标签和筛选标签 */}
       {hasSelectedFilters && (
         <div className="selected-filters mb-4">
-          <div className="text-sm text-gray-600 mb-2">已选择：</div>
+          {/* 添加常见调料按钮 - 在已选择区域内显示 */}
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-sm text-gray-600">已选择：</div>
+            <div className="flex items-center space-x-3">
+              <span className="text-sm text-gray-600">常见调料</span>
+              <div 
+                className="ios-toggle-switch"
+                onClick={handleToggleCommonSeasonings}
+              >
+                <div className={`ios-toggle-track ${isAddingSeasonings || hasSeasonings ? 'loading' : ''}`}>
+                  <div className="ios-toggle-thumb">
+                    {isAddingSeasonings ? (
+                      <svg className="w-3 h-3 animate-spin text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    ) : hasSeasonings ? (
+                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    ) : (
+                      <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                      </svg>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
           <div className="flex flex-wrap gap-2">
             {/* 显示必选食材 */}
             {searchState.requiredIngredients.length > 0 && (
@@ -335,7 +500,7 @@ export default function HomeListView({ totalResults = 0 }: HomeListViewProps) {
               <TagsDisplay
                 tags={searchState.optionalIngredients}
                 onRemove={controller.removeOptionalIngredient}
-                tagClassName="bg-indigo-100 text-indigo-800 border-indigo-300"
+                tagClassName="bg-green-100 text-green-800 border-green-300"
                 prefix="可选: "
               />
             )}
@@ -345,7 +510,7 @@ export default function HomeListView({ totalResults = 0 }: HomeListViewProps) {
               <TagsDisplay
                 tags={searchState.avoidIngredients}
                 onRemove={controller.removeAvoidIngredient}
-                tagClassName="bg-indigo-100 text-indigo-800 border-indigo-300"
+                tagClassName="bg-red-100 text-red-800 border-red-300"
                 prefix="忌口: "
               />
             )}

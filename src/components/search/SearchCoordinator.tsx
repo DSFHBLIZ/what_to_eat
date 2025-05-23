@@ -10,6 +10,8 @@ import BaseIngredientInput from '../common/BaseIngredientInput';
 import { ChevronUp, ChevronDown } from 'lucide-react';
 import { requestManager } from '../../utils/requests/requestManager';
 import { useCancellableRequests } from '../../utils/state/stateSynchronizer';
+import BanquetModeButton from './BanquetModeButton';
+import { BanquetConfig } from '../../types/banquet';
 
 // 热门搜索关键词
 const POPULAR_SEARCHES = ['意大利面', '蛋炒饭', '麻婆豆腐', '红烧肉', '水煮鱼'];
@@ -527,6 +529,23 @@ const SearchCoordinator: React.FC<SearchCoordinatorProps> = ({
           
           <div className="flex justify-between items-center w-full gap-2 mb-4">
             {filterButton}
+            
+            {/* 宴会模式切换按钮 */}
+            {controller && (
+              <BanquetModeButton 
+                banquetConfig={{
+                  isEnabled: controller.searchState.banquetMode?.isEnabled || false,
+                  guestCount: controller.searchState.banquetMode?.guestCount || 8,
+                  allocation: controller.searchState.banquetMode?.allocation || null
+                }}
+                onConfigChange={(config: BanquetConfig) => {
+                  console.log('SearchCoordinator: 宴会模式配置变更', config);
+                  console.log('SearchCoordinator: 控制器状态', controller.searchState.banquetMode);
+                  controller.setBanquetConfig(config);
+                  console.log('SearchCoordinator: 配置更新后状态', controller.searchState.banquetMode);
+                }}
+              />
+            )}
             
             <div className="flex items-center gap-2">
               {/* 统一的添加按钮，确保显示为可点击状态且样式一致 */}

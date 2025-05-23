@@ -10,17 +10,23 @@ import WithSkeleton from '../../components/ui/WithSkeleton';
 import SearchCoordinator from '../../components/search/SearchCoordinator';
 import { useUnifiedSearchController } from '../../controllers/useUnifiedSearchController';
 import RecipeCard from '../../components/RecipeCard';
+import BanquetRecipeCard from '../../components/banquet/BanquetRecipeCard';
+import BanquetFloatingRules from '../../components/banquet/BanquetFloatingRules';
+import BanquetGenerateButton from '../../components/banquet/BanquetGenerateButton';
 import HomeListView from '../../components/home/HomeListView';
 import { fetchRecipes } from '../../utils/data/dataService';
 import { FilterType } from '../../types/search';
 import Footer from '../../components/Footer';
 import { RecipeListSkeleton } from '../../components/ui/SkeletonLoader';
+import { useRouter } from 'next/navigation';
+import { ChefHat } from 'lucide-react';
 
 /**
  * 菜谱页面客户端组件
  */
 export default function RecipesClient() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,16 +38,37 @@ export default function RecipesClient() {
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   
+  // 添加总记录数跟踪
+  const [totalRecords, setTotalRecords] = useState(0);
+  
   // 用于无限滚动的观察器
   const observerRef = useRef<IntersectionObserver | null>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const lastRequestsRef = useRef<Map<string, number>>(new Map()); // 用于请求去重
   
   // 使用统一的搜索状态
-  const { searchState } = useUnifiedSearchController({
-    syncWithUrl: true,
+  const controller = useUnifiedSearchController({
+    syncWithUrl: true, // 启用 URL 同步，确保状态一致性
     autoExecuteSearch: false,
-    preserveHistory: true
+    preserveHistory: true,
+    defaultPage: 1,
+    defaultLimit: 50
   });
+  
+  // 宴会模式相关状态
+  const banquetMode = controller.searchState.banquetMode;
+  const selectedRecipeIds = banquetMode?.selectedRecipes || [];
+  const selectedRecipes = recipes.filter(recipe => selectedRecipeIds.includes(recipe.id));
+  
+  // 添加调试日志
+  useEffect(() => {
+    console.log('RecipesClient: 宴会模式状态变化', {
+      isEnabled: banquetMode?.isEnabled,
+      guestCount: banquetMode?.guestCount,
+      selectedRecipesCount: selectedRecipeIds.length,
+      allocation: banquetMode?.allocation
+    });
+  }, [banquetMode, selectedRecipeIds]);
   
   // 使用请求安全工具
   const { createRequest, cancelAllRequests } = useCancellableRequests();
@@ -49,6 +76,39 @@ export default function RecipesClient() {
   
   // 获取搜索结果
   const fetchSearchResults = useCallback(async (page = 1, append = false) => {
+    // 请求去重逻辑 - 防止短时间内重复请求
+    const requestKey = `${page}-${append}-${JSON.stringify({
+      searchQuery: controller.searchState.searchQuery,
+      requiredIngredients: controller.searchState.requiredIngredients.map(item => item.tag),
+      optionalIngredients: controller.searchState.optionalIngredients.map(item => item.tag),
+      cuisines: controller.searchState.cuisines,
+      difficulties: controller.searchState.difficulties,
+      flavors: controller.searchState.flavors,
+      dietaryRestrictions: controller.searchState.dietaryRestrictions
+    })}`;
+    
+    const now = Date.now();
+    const lastRequestTime = lastRequestsRef.current.get(requestKey);
+    
+    // 如果2秒内有相同的请求，跳过
+    if (lastRequestTime && (now - lastRequestTime) < 2000) {
+      console.log(`[SEARCH-DEDUP] 跳过重复请求 (${now - lastRequestTime}ms内重复):`, requestKey.substring(0, 100));
+      return;
+    }
+    
+    lastRequestsRef.current.set(requestKey, now);
+    
+    console.log(`[DEBUG] fetchSearchResults 开始 - 页码=${page}, 追加模式=${append}`);
+    console.log(`[DEBUG] 当前搜索状态:`, {
+      searchQuery: controller.searchState.searchQuery,
+      requiredIngredients: controller.searchState.requiredIngredients.length,
+      optionalIngredients: controller.searchState.optionalIngredients.length,
+      cuisines: controller.searchState.cuisines.length,
+      difficulties: controller.searchState.difficulties.length,
+      flavors: controller.searchState.flavors.length,
+      dietaryRestrictions: controller.searchState.dietaryRestrictions.length
+    });
+    
     if (page === 1) {
       setIsLoading(true);
     } else {
@@ -70,6 +130,19 @@ export default function RecipesClient() {
       params.append('page', page.toString());
       params.append('limit', '50'); // 从20改为50，增加每次加载的数据量
       
+      // 直接使用当前搜索状态，不再进行复杂的保存和恢复
+      const searchState = controller.searchState;
+      
+      console.log(`[DEBUG] 第${page}页请求使用的搜索状态:`, {
+        searchQuery: searchState.searchQuery,
+        requiredIngredients: searchState.requiredIngredients.map(item => item.tag),
+        optionalIngredients: searchState.optionalIngredients.map(item => item.tag),
+        cuisines: searchState.cuisines,
+        difficulties: searchState.difficulties,
+        flavors: searchState.flavors,
+        dietaryRestrictions: searchState.dietaryRestrictions
+      });
+      
       // 添加搜索输入
       if (searchState.searchQuery) {
         params.append('q', searchState.searchQuery);
@@ -79,25 +152,26 @@ export default function RecipesClient() {
       }
       
       // 添加必需食材
-      const requiredIngredientTags = searchState.requiredIngredients.map(item => item.tag);
-      if (requiredIngredientTags.length > 0) {
-        params.append('required', requiredIngredientTags.join(','));
+      if (searchState.requiredIngredients.length > 0) {
+        const requiredTags = searchState.requiredIngredients.map(item => item.tag);
+        // 使用与API端一致的参数名：requiredIngredient
+        requiredTags.forEach(tag => params.append('requiredIngredient', tag));
       }
       
       // 添加可选食材
-      const optionalIngredientTags = searchState.optionalIngredients.map(item => item.tag);
-      if (optionalIngredientTags.length > 0) {
-        params.append('optional', optionalIngredientTags.join(','));
+      if (searchState.optionalIngredients.length > 0) {
+        const optionalTags = searchState.optionalIngredients.map(item => item.tag);
+        // 使用与API端一致的参数名：optionalIngredient
+        optionalTags.forEach(tag => params.append('optionalIngredient', tag));
       }
       
       // 添加其他筛选条件
       if (searchState.cuisines.length > 0) {
-        params.append('cuisine', searchState.cuisines.join(','));
+        searchState.cuisines.forEach(cuisine => params.append('cuisine', cuisine));
       }
       
       if (searchState.difficulties.length > 0) {
         console.log('添加难度参数到搜索请求:', searchState.difficulties);
-        // 直接使用difficulties值，不做映射转换
         searchState.difficulties.forEach(difficulty => {
           params.append('difficulty', difficulty);
         });
@@ -112,16 +186,31 @@ export default function RecipesClient() {
           params.append('dietary', diet);
         });
       }
+      
+      // 添加标准参数确保与API端一致
+      params.append('tagLogic', 'OR');
+      params.append('sortField', 'relevance_score');
+      params.append('sortDirection', 'desc');
+      params.append('enableSemanticSearch', 'true');
 
       // 使用safeguardRequest确保只处理最新的请求结果
       await safeguardRequest(async () => {
-        let data: any = null;
-        let totalItems = 0;
+        let data: Recipe[] = [];
         
         // 所有请求都使用搜索API，保持一致性
         const apiUrl = `/api/recipes/search?${params.toString()}`;
         
         console.log(`[DEBUG] 请求API: ${apiUrl}`); // 添加日志
+        
+        // 检查是否缺少搜索条件，如果是则添加必要的默认条件以确保一致性
+        const hasAnySearchConditions = params.has('q') || params.has('query') || 
+          params.has('requiredIngredient') || params.has('optionalIngredient') || 
+          params.has('cuisine') || params.has('difficulty') || 
+          params.has('flavor') || params.has('dietary');
+        
+        if (!hasAnySearchConditions && page > 1) {
+          console.log(`[DEBUG] 第${page}页请求缺少搜索条件，但继续执行请求以获取默认数据`);
+        }
         
         // 执行请求
         const response = await fetch(apiUrl, {
@@ -147,43 +236,68 @@ export default function RecipesClient() {
           const responseData = safeJsonParse(responseText, {}, 'RecipesPage');
           console.log(`[DEBUG] 响应数据:`, responseData); // 添加日志
           
-          // 获取总数
-          if (responseData && typeof responseData === 'object' && 'total' in responseData) {
-            // 使用API返回的真实总数
-            totalItems = (responseData as {total: number}).total;
+          // 获取分页信息
+          let totalItems = 0;
+          let hasNextPage = false;
+          
+          // 优先从API返回的pagination对象中获取分页信息
+          if (responseData && typeof responseData === 'object' && 'pagination' in responseData) {
+            const pagination = (responseData as any).pagination;
+            if (pagination) {
+              totalItems = pagination.total || 0;
+              hasNextPage = pagination.hasNextPage || false;
+              
+              setTotalRecords(totalItems);
+              const calculatedTotalPages = Math.ceil(totalItems / 50);
+              setTotalPages(calculatedTotalPages);
+              setHasMore(hasNextPage);
+              
+              console.log(`[DEBUG] 使用API分页信息: 总记录数=${totalItems}, 总页数=${calculatedTotalPages}, 当前页=${page}, 还有更多=${hasNextPage}`);
+            }
             
-            // 计算总页数，使用50作为分页大小而不是20
+            // 从responseData中提取recipes数据
+            if ('recipes' in responseData) {
+              data = (responseData as any).recipes || [];
+            }
+          } 
+          // 兼容旧的API格式，从顶级total字段获取总数
+          else if (responseData && typeof responseData === 'object' && 'total' in responseData) {
+            totalItems = (responseData as {total: number}).total;
+            setTotalRecords(totalItems);
             const calculatedTotalPages = Math.ceil(totalItems / 50);
             setTotalPages(calculatedTotalPages);
-            // 检查是否还有更多页
             setHasMore(page < calculatedTotalPages);
-            console.log(`[DEBUG] 总记录数: ${totalItems}, 总页数: ${calculatedTotalPages}, 当前页: ${page}, 还有更多: ${page < calculatedTotalPages}`);
-          } else {
-            // 如果API未提供总数，则假设没有更多数据
-            setHasMore(false);
-            console.log(`[DEBUG] API未提供总记录数，假设没有更多数据`);
-          }
-          
-          // 尝试从对象中提取菜谱数组
-          if (typeof responseData === 'object' && responseData !== null && !Array.isArray(responseData)) {
-            if ('data' in responseData && Array.isArray((responseData as {data: any[]}).data)) {
-              data = (responseData as {data: any[]}).data;
-            } else if ('recipes' in responseData && Array.isArray((responseData as {recipes: any[]}).recipes)) {
-              data = (responseData as {recipes: any[]}).recipes;
-            } else if ('results' in responseData && Array.isArray((responseData as {results: any[]}).results)) {
-              data = (responseData as {results: any[]}).results;
+            
+            console.log(`[DEBUG] 使用兼容模式分页信息: 总记录数=${totalItems}, 总页数=${calculatedTotalPages}, 当前页=${page}, 还有更多=${page < calculatedTotalPages}`);
+            
+            // 兼容模式下，responseData本身可能就是recipes数组，或者在recipes字段中
+            if (Array.isArray(responseData)) {
+              data = responseData;
+            } else if ('recipes' in responseData) {
+              data = (responseData as any).recipes || [];
+            } else {
+              data = [];
             }
           } else {
-            data = responseData;
+            // 如果responseData直接是recipes数组
+            if (Array.isArray(responseData)) {
+              data = responseData;
+              setTotalRecords(data.length);
+              setTotalPages(1);
+              setHasMore(false);
+            } else {
+              data = [];
+            }
           }
           
-          // 如果是第二页以后且没有数据，不再模拟数据
+          // 如果是第二页以后且没有数据，设置没有更多数据
           if (page > 1 && (!data || (Array.isArray(data) && data.length === 0))) {
             console.log(`[DEBUG] 第${page}页没有数据，已到达菜谱列表末尾`);
             setHasMore(false);
+            return;
           }
           
-          console.log(`[DEBUG] 解析后的数据长度: ${Array.isArray(data) ? data.length : 0}`); // 添加日志
+          console.log(`[DEBUG] 解析后的数据长度: ${Array.isArray(data) ? data.length : 0}`);
           
           if (!data || (Array.isArray(data) && data.length === 0)) {
             if (page === 1) {
@@ -192,15 +306,7 @@ export default function RecipesClient() {
             setHasMore(false);
             console.log(`[DEBUG] 没有数据返回，设置hasMore=false`);
           } else {
-            // 判断是否还有更多数据
             const dataArray = Array.isArray(data) ? data : [];
-            const expectedPageSize = 50; // 期望的每页数据量
-            
-            // 如果返回的数据少于期望的每页数据量，可能已经到达末尾
-            if (dataArray.length < expectedPageSize && !('total' in responseData) && typeof responseData === 'object') {
-              setHasMore(false);
-              console.log(`[DEBUG] 数据不足一页(${dataArray.length} < ${expectedPageSize})，可能已到达末尾，设置hasMore=false`);
-            }
             
             // 根据是否追加模式更新菜谱列表
             if (append) {
@@ -217,7 +323,6 @@ export default function RecipesClient() {
             setCurrentPage(page);
           }
         } catch (parseError) {
-          data = [];
           setError('解析数据失败，请稍后再试');
           console.error('[ERROR] 解析响应失败:', parseError); // 添加日志
         }
@@ -246,7 +351,7 @@ export default function RecipesClient() {
         setIsLoadingMore(false);
       }
     }
-  }, [searchState, cancelAllRequests, createRequest, safeguardRequest]);
+  }, [controller, cancelAllRequests, createRequest, safeguardRequest]);
   
   // 加载更多数据
   const loadMore = useCallback(() => {
@@ -284,27 +389,36 @@ export default function RecipesClient() {
     };
   }, [hasMore, isLoading, isLoadingMore, loadMore]);
   
-  // 自动搜索逻辑
+  // 自动搜索逻辑 - 合并重复的useEffect并添加去重机制
   useEffect(() => {
-    if (fetchSearchResults && !hasSearched.current) {
-      hasSearched.current = true;
-      setTimeout(() => {
+    let searchExecuted = false;
+    
+    const executeInitialSearch = () => {
+      if (!searchExecuted && fetchSearchResults && !hasSearched.current) {
+        searchExecuted = true;
+        hasSearched.current = true;
+        
+        console.log('[SEARCH-DEDUP] 执行初始搜索');
+        
         // 重置分页状态
         setCurrentPage(1);
         setHasMore(true);
         fetchSearchResults(1, false);
-      }, 500);
-    }
-  }, [fetchSearchResults]);
-  
-  // 监听搜索执行事件，重置分页状态
-  useEffect(() => {
-    const handleSearch = (event: Event) => {
-      // 获取自定义事件的详细信息，包括最新的筛选条件
+      }
+    };
+    
+    const handleSearchEvent = (event: Event) => {
+      if (searchExecuted) {
+        console.log('[SEARCH-DEDUP] 跳过重复的搜索事件');
+        return;
+      }
+      
+      searchExecuted = true;
+      
       const customEvent = event as CustomEvent;
       const searchDetails = customEvent.detail || {};
       
-      console.log('recipes-client: 接收到搜索事件:', {
+      console.log('[SEARCH-DEDUP] 处理搜索事件:', {
         searchQuery: searchDetails.searchQuery || '',
         hasFilters: !!searchDetails.filters
       });
@@ -317,19 +431,66 @@ export default function RecipesClient() {
       fetchSearchResults(1, false);
     };
     
-    window.addEventListener('execute-search', handleSearch);
+    // 添加搜索事件监听器
+    window.addEventListener('execute-search', handleSearchEvent);
     
+    // 初始搜索延迟执行
+    const timeoutId = setTimeout(executeInitialSearch, 500);
+    
+    // 清理函数
     return () => {
-      window.removeEventListener('execute-search', handleSearch);
+      window.removeEventListener('execute-search', handleSearchEvent);
+      clearTimeout(timeoutId);
     };
-  }, [fetchSearchResults]);
+  }, [fetchSearchResults, controller]);
+
+  /**
+   * 导航到宴会汇总页面
+   */
+  const handleNavigateToSummary = useCallback(() => {
+    if (!banquetMode?.isEnabled || selectedRecipes.length === 0) return;
+    
+    try {
+      // 保存状态到sessionStorage
+      sessionStorage.setItem('banquet-selected-recipes', JSON.stringify(selectedRecipes));
+      sessionStorage.setItem('banquet-config', JSON.stringify(banquetMode));
+      
+      // 跳转到汇总页面
+      router.push('/banquet-summary');
+    } catch (error) {
+      console.error('保存宴会数据失败:', error);
+    }
+  }, [banquetMode, selectedRecipes, router]);
 
   return (
     <div className="container">
       
       <div className="mb-6">
-        <HomeListView />
+        <HomeListView controller={controller} />
       </div>
+
+      {/* 宴会模式悬浮规则提示窗口 */}
+      <BanquetFloatingRules
+        selectedRecipes={selectedRecipes}
+        banquetConfig={{
+          isEnabled: banquetMode?.isEnabled || false,
+          guestCount: banquetMode?.guestCount || 8,
+          allocation: banquetMode?.allocation || null
+        }}
+        onNavigateToSummary={handleNavigateToSummary}
+        isVisible={banquetMode?.isEnabled || false}
+      />
+
+      {/* 独立的生成宴会菜单按钮 */}
+      <BanquetGenerateButton
+        selectedRecipes={selectedRecipes}
+        banquetConfig={{
+          isEnabled: banquetMode?.isEnabled || false,
+          guestCount: banquetMode?.guestCount || 8,
+          allocation: banquetMode?.allocation || null
+        }}
+        isVisible={banquetMode?.isEnabled || false}
+      />
   
       <div className="mt-6">
         {isLoading ? (
@@ -348,10 +509,71 @@ export default function RecipesClient() {
           </div>
         ) : (
           <>
+            {/* 搜索结果反馈 - 与首页保持一致 */}
+            <div className="mb-4">
+              {banquetMode?.isEnabled ? (
+                <div className="flex items-center justify-between p-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg border-l-4 border-amber-400">
+                  <div className="flex items-center gap-3">
+                    <ChefHat size={20} className="text-amber-600" />
+                    <div>
+                      <div className="font-semibold text-amber-800">宴会模式配菜中</div>
+                      <div className="text-sm text-gray-600">
+                        从 <span className="font-bold text-blue-600">{totalRecords}</span> 道菜中选择
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-amber-700">
+                      {selectedRecipeIds.length}
+                      {banquetMode.allocation && (
+                        <span className="text-lg text-gray-500">
+                          /{banquetMode.allocation.totalDishes}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-500">已选菜品</div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-sm text-gray-600 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  共找到 <span className="text-blue-600 font-bold">{totalRecords}</span> 个相关菜品
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {recipes.map((recipe) => (
-                <RecipeCard key={recipe.id} recipe={recipe} />
-              ))}
+              {recipes.map((recipe, index) => {
+                if (banquetMode?.isEnabled) {
+                  // 宴会模式下使用多选卡片
+                  return (
+                    <BanquetRecipeCard
+                      key={`banquet-recipe-${recipe.id || ''}-${index}`}
+                      recipe={recipe}
+                      isSelected={selectedRecipeIds.includes(recipe.id)}
+                      onToggleSelection={controller.toggleRecipeSelection}
+                      onCardClick={(e) => {
+                        // 在新标签页中打开菜谱详情
+                        window.open(`/recipe/${recipe.id}`, '_blank');
+                      }}
+                      showMatchPercentage={false}
+                    />
+                  );
+                } else {
+                  // 普通模式下使用标准卡片
+                  return (
+                    <RecipeCard 
+                      key={`recipe-${recipe.id || ''}-${index}`} 
+                      recipe={recipe} 
+                      showMatchPercentage={false}
+                      onClick={(e) => {
+                        // 在新标签页中打开菜谱详情
+                        window.open(`/recipe/${recipe.id}`, '_blank');
+                      }}
+                    />
+                  );
+                }
+              })}
             </div>
             
             <div 
@@ -364,12 +586,9 @@ export default function RecipesClient() {
                   <p>正在加载更多菜谱...</p>
                 </WithSkeleton>
               ) : hasMore ? (
-                <button 
-                  onClick={loadMore}
-                  className="px-4 py-2 bg-indigo-500 text-white rounded hover:bg-indigo-600"
-                >
-                  加载更多菜谱
-                </button>
+                <div className="text-gray-400 text-sm">
+                  滚动到底部加载更多...
+                </div>
               ) : (
                 <p className="text-gray-500">已加载全部菜谱</p>
               )}

@@ -1,7 +1,7 @@
 export default {
   // 通用
   common: {
-    appName: "今天吃什么",
+    appName: "冰箱里有什么",
     loading: "加载中...",
     error: "发生错误",
     success: "操作成功",
@@ -51,12 +51,12 @@ export default {
 
   // 首页
   home: {
-    welcome: "欢迎使用今天吃什么",
+    welcome: "欢迎使用冰箱里有什么!",
     welcomeBack: "欢迎回来",
     recommended: "推荐食谱",
     popularRecipes: "热门食谱",
     recentlyViewed: "最近浏览",
-    whatToEatToday: "今天吃什么?",
+    whatToEatToday: "冰箱里有什么?",
     findRecipe: "查找食谱",
     getStarted: "开始使用",
     searchByIngredients: "按食材搜索",
@@ -213,7 +213,7 @@ export default {
 
   // 消息和错误
   messages: {
-    welcome: "欢迎使用今天吃什么!",
+    welcome: "欢迎使用冰箱里有什么!",
     loginSuccess: "登录成功",
     logoutSuccess: "已退出登录",
     registrationSuccess: "注册成功",
@@ -260,6 +260,6 @@ export default {
     help: "帮助中心",
     feedback: "反馈",
     follow: "关注我们",
-    copyright: "© 2024 今天吃什么. 保留所有权利.",
+    copyright: "© 2024 冰箱里有什么. 保留所有权利.",
   },
 }; 

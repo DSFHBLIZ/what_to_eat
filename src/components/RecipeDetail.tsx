@@ -16,6 +16,7 @@ import { useRecipeData } from '../hooks/useRecipeData';
 import { useRecipeError, RecipeErrorHelper } from '../contexts/AppProvider';
 import WithSkeleton from './ui/WithSkeleton';
 import { validateAndSanitizeRecipe, safeArray, safeString, safeBoolean } from '../utils/common/safeData';
+import RelatedRecipes from './recipe/RelatedRecipes';
 
 // 为每个可能出现问题的位置定义默认值
 const DEFAULT_VALUES = {
@@ -607,6 +608,14 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({
           validationResult={validationResult}
           validationPerformance={validationPerformance}
         />
+        
+        {/* 在菜谱详情末尾添加相关推荐 */}
+        {recipeToDisplay && (
+          <RelatedRecipes 
+            currentRecipe={recipeToDisplay}
+            className="mt-8"
+          />
+        )}
       </WithSkeleton>
     </ErrorBoundary>
   );

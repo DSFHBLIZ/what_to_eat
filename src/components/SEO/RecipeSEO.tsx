@@ -15,7 +15,7 @@ interface RecipeSEOProps {
 const RecipeSEO: React.FC<RecipeSEOProps> = ({ recipe }) => {
   if (!recipe) return null;
 
-  const title = `${recipe.name} 的做法 - 今天吃什么`;
+  const title = `${recipe.name} 的做法 - 冰箱里有什么`;
   const description = recipe.description
     ? recipe.description.substring(0, 150) + (recipe.description.length > 150 ? '...' : '')
     : `查看${recipe.name}的做法、用料和烹饪步骤`;
@@ -37,7 +37,7 @@ const RecipeSEO: React.FC<RecipeSEOProps> = ({ recipe }) => {
     image: ogImage,
     author: {
       '@type': 'Organization',
-      name: '今天吃什么',
+      name: '冰箱里有什么',
     },
     datePublished: recipe.createdAt || new Date().toISOString(),
     prepTime: recipe.prepTime ? `PT${recipe.prepTime}M` : undefined,
@@ -77,7 +77,7 @@ const RecipeSEO: React.FC<RecipeSEOProps> = ({ recipe }) => {
       <meta property="og:description" content={description} />
       <meta property="og:url" content={fullUrl} />
       <meta property="og:image" content={ogImage} />
-      <meta property="og:site_name" content="今天吃什么" />
+      <meta property="og:site_name" content="冰箱里有什么" />
       
       {/* Twitter */}
       <meta name="twitter:card" content="summary_large_image" />

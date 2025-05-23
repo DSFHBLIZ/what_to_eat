@@ -118,8 +118,8 @@ const withPWA = require('next-pwa')({
     console.log('创建PWA manifest.json文件...');
     
     const manifest = {
-      name: '今天吃什么',
-      short_name: '今天吃什么',
+      name: '冰箱里有什么',
+      short_name: '冰箱里有什么',
       description: '智能菜谱推荐平台',
       start_url: '/',
       display: 'standalone',

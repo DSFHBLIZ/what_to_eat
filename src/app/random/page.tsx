@@ -1,9 +1,9 @@
 import RandomRecipesClient from './random-client';
 
 export const metadata = {
-  title: '随机推荐 | 今天吃什么',
+  title: '随机推荐 | 冰箱里有什么',
   description: '让我们帮你随机推荐几道美食，减轻你的选择困难症',
-  keywords: ['随机推荐', '菜谱推荐', '美食随机', '选择困难', '今天吃什么']
+  keywords: ['随机推荐', '菜谱推荐', '美食随机', '选择困难', '冰箱里有什么']
 };
 
 // 强制页面动态渲染

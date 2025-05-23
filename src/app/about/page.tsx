@@ -2,7 +2,7 @@ import React from 'react';
 import ContactForm from '../../components/ContactForm';
 
 export const metadata = {
-  title: '联系我们 | 今天吃什么？',
+  title: '联系我们 | 冰箱里有什么？',
   description: '通过联系表单与我们取得联系。',
 };
 

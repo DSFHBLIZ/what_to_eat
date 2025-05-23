@@ -1,1 +1,0 @@
-"use strict";exports.id=988,exports.ids=[988],exports.modules={7988:(e,t,r)=>{r.r(t),r.d(t,{$$typeof:()=>a,__esModule:()=>o,default:()=>d});let s=(0,r(1481).createProxy)(String.raw`D:\test\Cursor\What_to_eat_Web\src\components\SearchBar.tsx`),{__esModule:o,$$typeof:a}=s,d=s.default}};

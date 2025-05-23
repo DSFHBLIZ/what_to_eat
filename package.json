@@ -8,16 +8,6 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "test:unit": "vitest run tests/unit",
-    "test:integration": "vitest run tests/integration",
-    "test:system": "playwright test tests/system",
-    "test:semantic-search": "ts-node --transpile-only scripts/test-semantic-search.ts",
-    "setup:test-env": "node scripts/setup-test-env.js",
-    "test:run-semantic": "npm run setup:test-env && vitest run tests/integration/semantic-search.test.ts",
-    "test:run-migration": "node scripts/execute-sql.js",
     "generate-docs": "ts-node src/utils/docGenerator.ts",
     "generate-design-tokens-docs": "ts-node -e \"import('./src/utils/docGenerator.ts').then(m => m.generateDesignTokensDocs())\"",
     "generate-events-docs": "ts-node -e \"import('./src/utils/docGenerator.ts').then(m => m.generateEventSystemDocs())\"",
@@ -55,23 +45,18 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
-    "@playwright/test": "^1.42.0",
-    "@testing-library/react": "^14.1.2",
     "@types/classnames": "^2.3.0",
     "@types/lodash": "^4.17.16",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.0.1",
     "eslint": "^8",
     "eslint-config-next": "14.0.4",
     "glob": "^11.0.1",
-    "jsdom": "^22.1.0",
     "postcss": "^8",
     "tailwindcss": "^3.3.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.3",
-    "vitest": "^1.2.1"
+    "typescript": "^5.8.3"
   }
 }

@@ -130,68 +130,62 @@ DECLARE
     step_end TIMESTAMPTZ;
 
     -- 评分权重常量，用于各组件内部计算，输出归一化结果(0-10)
-    score_weight_dish_name_exact FLOAT8 := 10.0;  -- 菜名精确匹配权重
-    score_weight_dish_name_fuzzy FLOAT8 := 6.0;   -- 菜名模糊匹配权重(LIKE/%)
-    score_weight_dish_name_similar FLOAT8 := 4.0; -- 菜名相似度匹配权重
+    score_weight_dish_name_exact FLOAT8 := get_score_weight_dish_name_exact();
+    score_weight_dish_name_fuzzy FLOAT8 := get_score_weight_dish_name_fuzzy();
+    score_weight_dish_name_similar FLOAT8 := get_score_weight_dish_name_similar();
 
-    -- 食材权重
-    score_weight_required_ingredient_exact FLOAT8 := 8.0;    -- 必选食材精确匹配
-    score_weight_required_ingredient_fuzzy FLOAT8 := 5.0;    -- 必选食材模糊匹配
-    score_weight_required_ingredient_similar FLOAT8 := 3.0;  -- 必选食材相似度匹配
-    score_weight_optional_ingredient_exact FLOAT8 := 6.0;    -- 可选食材精确匹配
-    score_weight_optional_ingredient_fuzzy FLOAT8 := 4.0;    -- 可选食材模糊匹配
-    score_weight_optional_ingredient_similar FLOAT8 := 2.0;  -- 可选食材相似度匹配
+    score_weight_required_ingredient_exact FLOAT8 := get_score_weight_required_ingredient_exact();
+    score_weight_required_ingredient_fuzzy FLOAT8 := get_score_weight_required_ingredient_fuzzy();
+    score_weight_required_ingredient_similar FLOAT8 := get_score_weight_required_ingredient_similar();
+    score_weight_optional_ingredient_exact FLOAT8 := get_score_weight_optional_ingredient_exact();
+    score_weight_optional_ingredient_fuzzy FLOAT8 := get_score_weight_optional_ingredient_fuzzy();
+    score_weight_optional_ingredient_similar FLOAT8 := get_score_weight_optional_ingredient_similar();
 
-    -- 调料权重
-    score_weight_required_condiment_exact FLOAT8 := 8.0;    -- 必选调料精确匹配
-    score_weight_required_condiment_fuzzy FLOAT8 := 5.0;    -- 必选调料模糊匹配
-    score_weight_required_condiment_similar FLOAT8 := 3.0;  -- 必选调料相似度匹配
-    score_weight_optional_condiment_exact FLOAT8 := 6.0;    -- 可选调料精确匹配
-    score_weight_optional_condiment_fuzzy FLOAT8 := 4.0;    -- 可选调料模糊匹配
-    score_weight_optional_condiment_similar FLOAT8 := 2.0;  -- 可选调料相似度匹配
+    score_weight_required_condiment_exact FLOAT8 := get_score_weight_required_condiment_exact();
+    score_weight_required_condiment_fuzzy FLOAT8 := get_score_weight_required_condiment_fuzzy();
+    score_weight_required_condiment_similar FLOAT8 := get_score_weight_required_condiment_similar();
+    score_weight_optional_condiment_exact FLOAT8 := get_score_weight_optional_condiment_exact();
+    score_weight_optional_condiment_fuzzy FLOAT8 := get_score_weight_optional_condiment_fuzzy();
+    score_weight_optional_condiment_similar FLOAT8 := get_score_weight_optional_condiment_similar();
 
-    -- 分类权重
-    score_weight_required_ingredient_category_exact FLOAT8 := 3.0;    -- 必选食材分类精确匹配
-    score_weight_required_ingredient_category_fuzzy FLOAT8 := 2.0;    -- 必选食材分类模糊匹配
-    score_weight_required_ingredient_category_similar FLOAT8 := 1.0;  -- 必选食材分类相似度匹配
-    score_weight_optional_ingredient_category_exact FLOAT8 := 3.0;    -- 可选食材分类精确匹配
-    score_weight_optional_ingredient_category_fuzzy FLOAT8 := 2.0;    -- 可选食材分类模糊匹配
-    score_weight_optional_ingredient_category_similar FLOAT8 := 1.0;  -- 可选食材分类相似度匹配
-    score_weight_required_condiment_category_exact FLOAT8 := 3.0;     -- 必选调料分类精确匹配
-    score_weight_required_condiment_category_fuzzy FLOAT8 := 2.0;     -- 必选调料分类模糊匹配
-    score_weight_required_condiment_category_similar FLOAT8 := 1.0;   -- 必选调料分类相似度匹配
-    score_weight_optional_condiment_category_exact FLOAT8 := 3.0;     -- 可选调料分类精确匹配
-    score_weight_optional_condiment_category_fuzzy FLOAT8 := 2.0;     -- 可选调料分类模糊匹配
-    score_weight_optional_condiment_category_similar FLOAT8 := 1.0;   -- 可选调料分类相似度匹配
+    score_weight_required_ingredient_category_exact FLOAT8 := get_score_weight_required_ingredient_category_exact();
+    score_weight_required_ingredient_category_fuzzy FLOAT8 := get_score_weight_required_ingredient_category_fuzzy();
+    score_weight_required_ingredient_category_similar FLOAT8 := get_score_weight_required_ingredient_category_similar();
+    score_weight_optional_ingredient_category_exact FLOAT8 := get_score_weight_optional_ingredient_category_exact();
+    score_weight_optional_ingredient_category_fuzzy FLOAT8 := get_score_weight_optional_ingredient_category_fuzzy();
+    score_weight_optional_ingredient_category_similar FLOAT8 := get_score_weight_optional_ingredient_category_similar();
+    score_weight_required_condiment_category_exact FLOAT8 := get_score_weight_required_condiment_category_exact();
+    score_weight_required_condiment_category_fuzzy FLOAT8 := get_score_weight_required_condiment_category_fuzzy();
+    score_weight_required_condiment_category_similar FLOAT8 := get_score_weight_required_condiment_category_similar();
+    score_weight_optional_condiment_category_exact FLOAT8 := get_score_weight_optional_condiment_category_exact();
+    score_weight_optional_condiment_category_fuzzy FLOAT8 := get_score_weight_optional_condiment_category_fuzzy();
+    score_weight_optional_condiment_category_similar FLOAT8 := get_score_weight_optional_condiment_category_similar();
 
-    -- 菜系权重
-    score_weight_cuisine_exact FLOAT8 := 5.0;                -- 菜系精确匹配权重
-    score_weight_cuisine_fuzzy FLOAT8 := 3.0;                -- 菜系模糊匹配权重
-    score_weight_cuisine_similar FLOAT8 := 2.0;              -- 菜系相似度匹配权重
-    score_weight_cuisine_homestyle FLOAT8 := 2.0;            -- 家常菜加分权重
+    score_weight_cuisine_exact FLOAT8 := get_score_weight_cuisine_exact();
+    score_weight_cuisine_fuzzy FLOAT8 := get_score_weight_cuisine_fuzzy();
+    score_weight_cuisine_similar FLOAT8 := get_score_weight_cuisine_similar();
+    score_weight_cuisine_homestyle FLOAT8 := get_score_weight_cuisine_homestyle();
 
-    -- 其他权重
-    score_weight_flavor FLOAT8 := 4.0;                       -- 口味匹配权重
-    score_weight_difficulty FLOAT8 := 3.0;                   -- 难度匹配权重
-    score_weight_dietary FLOAT8 := 5.0;                      -- 饮食限制匹配权重
+    score_weight_flavor FLOAT8 := get_score_weight_flavor();
+    score_weight_difficulty FLOAT8 := get_score_weight_difficulty();
+    score_weight_dietary FLOAT8 := get_score_weight_dietary();
 
-    -- 语义搜索权重
-    score_weight_semantic_match FLOAT8 := 10.0;              -- 语义搜索匹配权重
+    score_weight_semantic_match FLOAT8 := get_score_weight_semantic_match();
 
     -- 最终乘数（应用于归一化后的0-10分组件分数）
     -- 加权线性求和评分系统的关键：对归一化分数应用不同的权重
-    final_multiplier_semantic_search FLOAT8 := 3.0;  -- 语义搜索影响最大
-    final_multiplier_dish_name FLOAT8 := 2.8;        -- 菜名匹配信号强
-    final_multiplier_req_ingredients FLOAT8 := 2.5;  -- "按食材搜索"的核心
-    final_multiplier_req_condiments FLOAT8 := 1.5;   -- 重要但次于主要食材
-    final_multiplier_cuisine FLOAT8 := 1.2;          -- 显著偏好
-    final_multiplier_flavor FLOAT8 := 1.2;           -- 显著偏好
-    final_multiplier_opt_ingredients FLOAT8 := 0.8;  -- 优化项，良好的补充
-    final_multiplier_opt_condiments FLOAT8 := 0.5;   -- 较不重要的可选项
-    final_multiplier_req_ing_cat FLOAT8 := 0.7;      -- 必选但是更广泛的分类匹配
-    final_multiplier_req_cond_cat FLOAT8 := 0.4;     -- 必选但广泛，适用于调料
-    final_multiplier_opt_ing_cat FLOAT8 := 0.3;      -- 可选且广泛
-    final_multiplier_opt_cond_cat FLOAT8 := 0.2;     -- 可选且广泛，适用于调料
+    final_multiplier_semantic_search FLOAT8 := get_final_multiplier_semantic_search();
+    final_multiplier_dish_name FLOAT8 := get_final_multiplier_dish_name();
+    final_multiplier_req_ingredients FLOAT8 := get_final_multiplier_req_ingredients();
+    final_multiplier_req_condiments FLOAT8 := get_final_multiplier_req_condiments();
+    final_multiplier_cuisine FLOAT8 := get_final_multiplier_cuisine();
+    final_multiplier_flavor FLOAT8 := get_final_multiplier_flavor();
+    final_multiplier_opt_ingredients FLOAT8 := get_final_multiplier_opt_ingredients();
+    final_multiplier_opt_condiments FLOAT8 := get_final_multiplier_opt_condiments();
+    final_multiplier_req_ing_cat FLOAT8 := get_final_multiplier_req_ing_cat();
+    final_multiplier_req_cond_cat FLOAT8 := get_final_multiplier_req_cond_cat();
+    final_multiplier_opt_ing_cat FLOAT8 := get_final_multiplier_opt_ing_cat();
+    final_multiplier_opt_cond_cat FLOAT8 := get_final_multiplier_opt_cond_cat();
 
     -- 语义搜索变量
     query_embedding vector(1536);                           -- 查询的嵌入向量
@@ -752,6 +746,19 @@ BEGIN
         -- 记录最终过滤后的记录总数（这是计算分页的基础）
         SELECT COUNT(*) AS count FROM general_search_filtered
     ),
+    -- 新增：在应用分页前预先获取总记录数和性能统计
+    pagination_metadata AS (
+        SELECT 
+            (SELECT count FROM final_filtered_count) AS total_filtered_count,
+            (SELECT count FROM total_recipe_count) AS total_recipe_count,
+            (SELECT count FROM cuisine_count) AS cuisine_filtered_count,
+            (SELECT count FROM general_search_count) AS general_search_filtered_count,
+            (SELECT count FROM flavor_count) AS flavor_filtered_count,
+            (SELECT count FROM difficulty_count) AS difficulty_filtered_count,
+            (SELECT count FROM dietary_count) AS dietary_filtered_count,
+            (SELECT count FROM forbidden_ingredient_count) AS forbidden_ingredient_filtered_count,
+            (SELECT count FROM required_ingredient_count) AS required_ingredient_filtered_count
+    ),
     optional_ingredient_relevance AS (
         -- 可选食材相关性评分
         SELECT
@@ -957,23 +964,28 @@ BEGIN
             ) AS calc_relevance_score
         FROM combined_scores
     ),
-    final_results AS (
-        -- 应用排序和分页
-        SELECT
-            calculated_scores.*,
-            (SELECT count FROM final_filtered_count) AS result_filtered_count,
+    -- 新增：独立的分页元数据CTE，确保总是可以获取元数据
+    pagination_data AS (
+        SELECT 
+            pm.total_filtered_count,
             -- 添加查询性能数据
             jsonb_build_object(
-                'filtered_count', (SELECT count FROM final_filtered_count),
-                'total_count', filtered_total_count,
-                'cuisine_filtered_count', filtered_cuisine_filtered_count,
-                'general_search_filtered_count', filtered_general_search_count,
-                'flavor_filtered_count', filtered_flavor_filtered_count,
-                'difficulty_filtered_count', filtered_difficulty_filtered_count,
-                'dietary_filtered_count', filtered_dietary_filtered_count,
-                'forbidden_ingredient_filtered_count', filtered_forbidden_ingredient_filtered_count,
-                'required_ingredient_filtered_count', filtered_required_ingredient_filtered_count
+                'filtered_count', pm.total_filtered_count,
+                'total_count', pm.total_recipe_count,
+                'cuisine_filtered_count', pm.cuisine_filtered_count,
+                'general_search_filtered_count', pm.general_search_filtered_count,
+                'flavor_filtered_count', pm.flavor_filtered_count,
+                'difficulty_filtered_count', pm.difficulty_filtered_count,
+                'dietary_filtered_count', pm.dietary_filtered_count,
+                'forbidden_ingredient_filtered_count', pm.forbidden_ingredient_filtered_count,
+                'required_ingredient_filtered_count', pm.required_ingredient_filtered_count
             ) AS sr_performance_details
+        FROM pagination_metadata pm
+    ),
+    final_results AS (
+        -- 应用排序和分页，但不包含元数据（避免CROSS JOIN导致的空结果问题）
+        SELECT
+            calculated_scores.*
         FROM calculated_scores
         ORDER BY
             CASE WHEN sort_field = 'relevance_score' AND sort_direction = 'DESC' THEN calc_relevance_score END DESC,
@@ -1003,6 +1015,107 @@ BEGIN
                 WHEN (preview_mode = TRUE) THEN 0
                 ELSE (page - 1) * page_size
             END
+    ),
+    -- 修复：确保即使分页超出范围也能返回元数据的CTE
+    final_results_with_metadata AS (
+        -- 如果有分页数据，返回数据记录 + 元数据
+        SELECT 
+            fr.filtered_id,
+            fr.filtered_菜名,
+            fr.filtered_菜系,
+            fr.filtered_口味特点,
+            fr.filtered_烹饪技法,
+            fr.filtered_食材,
+            fr.filtered_调料,
+            fr.filtered_步骤,
+            fr.filtered_注意事项,
+            fr.filtered_created_at,
+            fr.filtered_updated_at,
+            fr.filtered_烹饪难度,
+            fr.filtered_是否无麸质,
+            fr.filtered_调料分类,
+            fr.filtered_user_id,
+            fr.filtered_是否清真,
+            fr.filtered_食材分类,
+            fr.filtered_是否纯素,
+            fr.filtered_菜系_jsonb,
+            fr.filtered_菜名_jsonb,
+            fr.filtered_total_count::BIGINT,
+            fr.filtered_cuisine_filtered_count::BIGINT,
+            fr.filtered_general_search_count::BIGINT,
+            fr.filtered_flavor_filtered_count::BIGINT,
+            fr.filtered_difficulty_filtered_count::BIGINT,
+            fr.filtered_dietary_filtered_count::BIGINT,
+            fr.filtered_forbidden_ingredient_filtered_count::BIGINT,
+            fr.filtered_required_ingredient_filtered_count::BIGINT,
+            fr.req_ingredients_score,
+            fr.req_condiments_score,
+            fr.req_ing_categories_score,
+            fr.req_cond_categories_score,
+            fr.cs_cuisine_score,
+            fr.cs_flavor_score,
+            fr.cs_dish_name_score,
+            fr.semantic_search_score,
+            fr.cs_opt_ingredients_score,
+            fr.cs_opt_condiments_score,
+            fr.cs_opt_ing_categories_score,
+            fr.cs_opt_cond_categories_score,
+            fr.calc_relevance_score,
+            pd.total_filtered_count AS result_filtered_count,
+            pd.sr_performance_details
+        FROM final_results fr
+        CROSS JOIN pagination_data pd
+        
+        UNION ALL
+        
+        -- 如果没有分页数据（分页超出范围或无符合条件的记录），返回空数据记录 + 元数据
+        SELECT 
+            NULL::UUID AS filtered_id,
+            NULL::TEXT AS filtered_菜名,
+            NULL::TEXT AS filtered_菜系,
+            NULL::JSONB AS filtered_口味特点,
+            NULL::JSONB AS filtered_烹饪技法,
+            NULL::JSONB AS filtered_食材,
+            NULL::JSONB AS filtered_调料,
+            NULL::JSONB AS filtered_步骤,
+            NULL::JSONB AS filtered_注意事项,
+            NULL::TIMESTAMP WITH TIME ZONE AS filtered_created_at,
+            NULL::TIMESTAMP WITH TIME ZONE AS filtered_updated_at,
+            NULL::TEXT AS filtered_烹饪难度,
+            NULL::BOOLEAN AS filtered_是否无麸质,
+            NULL::JSONB AS filtered_调料分类,
+            NULL::UUID AS filtered_user_id,
+            NULL::BOOLEAN AS filtered_是否清真,
+            NULL::JSONB AS filtered_食材分类,
+            NULL::BOOLEAN AS filtered_是否纯素,
+            NULL::JSONB AS filtered_菜系_jsonb,
+            NULL::JSONB AS filtered_菜名_jsonb,
+            NULL::BIGINT AS filtered_total_count,
+            NULL::BIGINT AS filtered_cuisine_filtered_count,
+            NULL::BIGINT AS filtered_general_search_count,
+            NULL::BIGINT AS filtered_flavor_filtered_count,
+            NULL::BIGINT AS filtered_difficulty_filtered_count,
+            NULL::BIGINT AS filtered_dietary_filtered_count,
+            NULL::BIGINT AS filtered_forbidden_ingredient_filtered_count,
+            NULL::BIGINT AS filtered_required_ingredient_filtered_count,
+            -- 评分相关字段
+            NULL::FLOAT8 AS req_ingredients_score,
+            NULL::FLOAT8 AS req_condiments_score,
+            NULL::FLOAT8 AS req_ing_categories_score,
+            NULL::FLOAT8 AS req_cond_categories_score,
+            NULL::FLOAT8 AS cs_cuisine_score,
+            NULL::FLOAT8 AS cs_flavor_score,
+            NULL::FLOAT8 AS cs_dish_name_score,
+            NULL::FLOAT8 AS semantic_search_score,
+            NULL::FLOAT8 AS cs_opt_ingredients_score,
+            NULL::FLOAT8 AS cs_opt_condiments_score,
+            NULL::FLOAT8 AS cs_opt_ing_categories_score,
+            NULL::FLOAT8 AS cs_opt_cond_categories_score,
+            NULL::FLOAT8 AS calc_relevance_score,
+            pd.total_filtered_count AS result_filtered_count,
+            pd.sr_performance_details
+        FROM pagination_data pd
+        WHERE NOT EXISTS (SELECT 1 FROM final_results)  -- 只有当final_results为空时才返回此记录
     )
     -- 返回最终结果，使用简化的CASE语句进行排序
     SELECT
@@ -1043,8 +1156,8 @@ BEGIN
         NULL::NUMERIC AS pagination_time_ms,         -- 避免与函数变量冲突，使用NULL占位
         sr_performance_details AS performance_details,
         result_filtered_count AS filtered_count,     -- 使用重命名的字段，避免与函数变量冲突
-        filtered_total_count AS total_count          -- 数据库总记录数
-    FROM final_results
+        result_filtered_count AS total_count          -- 使用正确的总记录数
+    FROM final_results_with_metadata
     ORDER BY
         CASE
             WHEN sort_field::TEXT = '菜名' AND valid_direction::TEXT = 'ASC' THEN filtered_菜名 END ASC,
@@ -1067,9 +1180,7 @@ BEGIN
         CASE
             WHEN sort_field::TEXT = 'updated_at' AND valid_direction::TEXT = 'DESC' THEN filtered_updated_at END DESC,
         CASE
-            WHEN sort_field::TEXT = 'relevance_score' OR sort_field IS NULL THEN calc_relevance_score END DESC
-    LIMIT effective_page_size
-    OFFSET start_offset;
+            WHEN sort_field::TEXT = 'relevance_score' OR sort_field IS NULL THEN calc_relevance_score END DESC;
 
     -- 在debug模式下，记录查询执行完毕的总时间
     IF debug_mode THEN

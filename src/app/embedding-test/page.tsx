@@ -247,6 +247,85 @@ export default function EmbeddingTestPage() {
     }
   };
 
+  // 测试缓存效果
+  const testCacheEffectiveness = async () => {
+    if (!query) {
+      setError('请输入查询文本');
+      return;
+    }
+    
+    setLoading(true);
+    setError('');
+    
+    try {
+      log(`===== 开始缓存效果测试 =====`);
+      log(`测试文本: "${query}"`);
+      
+      // 第一次调用 - 应该生成新向量
+      log(`第一次调用 - 应该生成新向量并缓存:`);
+      const response1 = await fetch('/api/embedding', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: query }),
+      });
+      
+      const data1 = await response1.json();
+      if (response1.ok) {
+        log(`第一次调用结果: ${data1.success ? '成功' : '失败'}, 缓存状态: ${data1.cached ? '使用缓存' : '新生成'}, 维度: ${data1.dimension}`);
+      } else {
+        log(`第一次调用失败: ${data1.error}`);
+      }
+      
+      // 等待500ms再进行第二次调用
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // 第二次调用 - 应该使用缓存
+      log(`第二次调用 - 应该使用数据库缓存:`);
+      const response2 = await fetch('/api/embedding', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: query }),
+      });
+      
+      const data2 = await response2.json();
+      if (response2.ok) {
+        log(`第二次调用结果: ${data2.success ? '成功' : '失败'}, 缓存状态: ${data2.cached ? '使用缓存' : '新生成'}, 维度: ${data2.dimension}`);
+      } else {
+        log(`第二次调用失败: ${data2.error}`);
+      }
+      
+      // 第三次调用 - 应该使用内存缓存
+      log(`第三次调用 - 应该使用内存缓存:`);
+      const response3 = await fetch('/api/embedding', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: query }),
+      });
+      
+      const data3 = await response3.json();
+      if (response3.ok) {
+        log(`第三次调用结果: ${data3.success ? '成功' : '失败'}, 缓存状态: ${data3.cached ? '使用缓存' : '新生成'}, 维度: ${data3.dimension}`);
+      } else {
+        log(`第三次调用失败: ${data3.error}`);
+      }
+      
+      log(`===== 缓存效果测试完成 =====`);
+      
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      log(`缓存效果测试失败: ${errorMessage}`);
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="container mx-auto p-4">
       <h1 className="text-2xl font-bold mb-4">嵌入向量测试页面</h1>
@@ -328,6 +407,14 @@ export default function EmbeddingTestPage() {
               disabled={loading}
             >
               向量化所有菜谱
+            </button>
+            
+            <button
+              onClick={testCacheEffectiveness}
+              className="px-4 py-2 bg-teal-500 text-white rounded hover:bg-teal-600 transition-colors"
+              disabled={loading || !query}
+            >
+              测试缓存效果
             </button>
           </div>
           

@@ -106,7 +106,7 @@ const RecipeCard: React.FC<RecipeCardProps> = ({
 
   return (
     <Card 
-      className="overflow-hidden h-full border bg-white hover:shadow-md transition-all cursor-pointer relative" 
+      className={`group relative overflow-hidden border bg-white hover:shadow-md transition-all cursor-pointer recipe-card-fixed-height ${className}`} 
       onClick={(e?: React.MouseEvent<HTMLDivElement>) => {
         if (!e) return;
         
@@ -128,7 +128,7 @@ const RecipeCard: React.FC<RecipeCardProps> = ({
       {/* 收藏按钮 */}
       {showFavoriteButton && (
         <div 
-          className="absolute top-2 right-2 z-10 favorite-button-container" 
+          className="absolute -top-4 right-6 z-4 favorite-button-container" 
           onClick={(e) => e.stopPropagation()}
         >
           <FavoriteButton 
@@ -140,66 +140,78 @@ const RecipeCard: React.FC<RecipeCardProps> = ({
         </div>
       )}
       
-      <CardHeader className="p-4 pb-2">
-        <CardTitle className="text-lg font-semibold line-clamp-1">{highlightedName || recipeName}</CardTitle>
+      <CardHeader className="p-4 pb-2 flex-shrink-0">
+        <CardTitle className="text-lg font-semibold line-clamp-2 recipe-card-title">
+          {highlightedName || recipeName}
+        </CardTitle>
       </CardHeader>
-      <CardContent className="p-4 pt-0">
-        <div className="flex flex-wrap gap-2 mb-2">
-          {/* 菜系标签 - 使用与详情页一致的配色方案 */}
-          {cuisineType && (
-            <TagWrapper
-              label={cuisineType}
-              type="filter-selected"
-              color="blue"
-              size="sm"
-            />
-          )}
-          
-          {/* 烹饪时间标签 - 使用与详情页一致的配色方案 */}
-          {cookingTime && (
-            <TagWrapper
-              label={`时间: ${formatCookingTime(cookingTime)}`}
-              type="filter-selected"
-              color="green"
-              size="sm"
-            />
-          )}
-          
-          {/* 口味标签 */}
-          {flavorTags.length > 0 && (
-            <TagWrapper
-              label={`口味: ${flavorTags.join('，')}`}
-              type="filter-selected"
-              color="orange"
-              size="sm"
-            />
-          )}
-          
-          {/* 饮食限制标签 */}
-          {dietaryRestrictions && dietaryRestrictions.length > 0 && (
-            <TagWrapper
-              label={dietaryRestrictions[0]}
-              type="filter-selected"
-              color="amber"
-              size="sm"
-            />
-          )}
+      
+      <CardContent className="p-4 pt-0 flex flex-col flex-1">
+        {/* 标签区域 - 固定高度 */}
+        <div className="flex-shrink-0 recipe-card-tags-area">
+          <div className="flex flex-wrap gap-2 mb-2">
+            {/* 菜系标签 */}
+            {cuisineType && (
+              <TagWrapper
+                label={cuisineType}
+                type="filter-selected"
+                color="blue"
+                size="sm"
+              />
+            )}
+            
+            {/* 烹饪时间标签 */}
+            {cookingTime && (
+              <TagWrapper
+                label={`时间: ${formatCookingTime(cookingTime)}`}
+                type="filter-selected"
+                color="green"
+                size="sm"
+              />
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {/* 口味标签 */}
+            {flavorTags.length > 0 && (
+              <TagWrapper
+                label={`口味: ${flavorTags.join('，')}`}
+                type="filter-selected"
+                color="orange"
+                size="sm"
+              />
+            )}
+            
+            {/* 饮食限制标签 */}
+            {dietaryRestrictions && dietaryRestrictions.length > 0 && (
+              <TagWrapper
+                label={dietaryRestrictions[0]}
+                type="filter-selected"
+                color="amber"
+                size="sm"
+              />
+            )}
+          </div>
         </div>
         
-        {/* 显示主要口味描述 */}
-        {mainFlavors.length > 0 && (
-          <div className="mb-2 text-sm text-gray-500 italic">
-            {mainFlavors.join('，')}
-          </div>
-        )}
+        {/* 显示主要口味描述 - 固定高度 */}
+        <div className="flex-shrink-0 mb-2 text-sm text-gray-500 italic recipe-card-flavors">
+          {mainFlavors.length > 0 ? mainFlavors.join('，') : ''}
+        </div>
         
-        {/* 主要食材信息 */}
-        {ingredientList.length > 0 && (
-          <div className="text-sm font-normal text-gray-900">
-            <span className="font-medium">主要食材:</span> {ingredientList.join('、')}
-            {recipe.ingredients && recipe.ingredients.length > 5 && '...'}
+        {/* 主要食材信息 - 占据剩余空间 */}
+        <div className="flex-1 flex items-end">
+          <div className="text-sm font-normal text-gray-900 w-full">
+            {ingredientList.length > 0 ? (
+              <>
+                <span className="font-medium">主要食材:</span> {ingredientList.join('、')}
+                {recipe.ingredients && recipe.ingredients.length > 5 && '...'}
+              </>
+            ) : (
+              <span className="text-gray-400">暂无食材信息</span>
+            )}
           </div>
-        )}
+        </div>
       </CardContent>
     </Card>
   );

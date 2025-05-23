@@ -16,13 +16,13 @@ interface PageSEOProps {
  * 用于为普通页面设置SEO相关元数据
  */
 const PageSEO: React.FC<PageSEOProps> = ({
-  title = '今天吃什么 - 智能菜谱推荐',
+  title = '冰箱里有什么 - 智能菜谱推荐',
   description = '基于你家现有食材推荐食谱，解决每天"吃什么"的难题',
   canonical = '',
   ogImage = '/images/og-image.jpg',
   noIndex = false,
 }) => {
-  const siteName = '今天吃什么';
+  const siteName = '冰箱里有什么';
   const fullUrl = canonical 
     ? `${process.env.NEXT_PUBLIC_BASE_URL || 'https://whattoeat.vercel.app'}${canonical}` 
     : '';

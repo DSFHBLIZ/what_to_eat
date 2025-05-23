@@ -72,6 +72,14 @@ export interface UnifiedSearchState {
   sortField: string;
   sortDirection: 'asc' | 'desc';
   
+  // 宴会模式状态
+  banquetMode?: {
+    isEnabled: boolean;
+    guestCount: number;
+    allocation: import('../types/banquet').DishAllocation | null;
+    selectedRecipes: string[]; // 选中的菜谱ID数组
+  };
+  
   // 运行时状态
   loading?: boolean;
   searchResults?: RecipeWithScore[];
@@ -258,7 +266,14 @@ export function useUnifiedSearchController(options: UnifiedSearchControllerOptio
     page: defaultPage,
     limit: defaultLimit,
     sortField: defaultSortField,
-    sortDirection: defaultSortDirection
+    sortDirection: defaultSortDirection,
+    // 初始化宴会模式状态
+    banquetMode: {
+      isEnabled: false,
+      guestCount: 8,
+      allocation: null,
+      selectedRecipes: []
+    }
   });
   
   // 从URL同步状态 - 仅初始加载时
@@ -832,6 +847,50 @@ export function useUnifiedSearchController(options: UnifiedSearchControllerOptio
     });
   }, [setSearchState]);
   
+  // 设置宴会配置
+  const setBanquetConfig = useCallback((config: import('../types/banquet').BanquetConfig) => {
+    setSearchState(prev => ({
+      ...prev,
+      banquetMode: {
+        isEnabled: config.isEnabled,
+        guestCount: config.guestCount,
+        allocation: config.allocation,
+        selectedRecipes: config.isEnabled ? (prev.banquetMode?.selectedRecipes || []) : []
+      }
+    }));
+  }, [setSearchState]);
+
+  // 切换菜谱选择状态（宴会模式下的多选功能）
+  const toggleRecipeSelection = useCallback((recipeId: string) => {
+    setSearchState(prev => {
+      if (!prev.banquetMode?.isEnabled) return prev;
+      
+      const currentSelected = prev.banquetMode.selectedRecipes || [];
+      const isSelected = currentSelected.includes(recipeId);
+      
+      return {
+        ...prev,
+        banquetMode: {
+          ...prev.banquetMode,
+          selectedRecipes: isSelected
+            ? currentSelected.filter(id => id !== recipeId)
+            : [...currentSelected, recipeId]
+        }
+      };
+    });
+  }, [setSearchState]);
+
+  // 清空选中的菜谱
+  const clearSelectedRecipes = useCallback(() => {
+    setSearchState(prev => ({
+      ...prev,
+      banquetMode: prev.banquetMode ? {
+        ...prev.banquetMode,
+        selectedRecipes: []
+      } : undefined
+    }));
+  }, [setSearchState]);
+
   // 返回控制器对象
   return {
     searchState,
@@ -845,6 +904,10 @@ export function useUnifiedSearchController(options: UnifiedSearchControllerOptio
     addAvoidIngredient,     // 添加忌口食材
     removeAvoidIngredient,  // 移除忌口食材
     toggleFilter,
+    // 宴会模式相关方法
+    setBanquetConfig,
+    toggleRecipeSelection,
+    clearSelectedRecipes,
     searchHistory,
     searchIsLoading,
     searchError

@@ -18,7 +18,13 @@ type EmbeddingCache = {
   [key: string]: number[];
 };
 
+// 正在进行的嵌入向量生成请求缓存（避免重复请求）
+type PendingRequest = {
+  [key: string]: Promise<number[]>;
+};
+
 let embeddingCache: EmbeddingCache = {};
+let pendingRequests: PendingRequest = {};
 
 // 创建Supabase客户端
 const getSupabaseClient = (): SupabaseClient | null => {
@@ -68,92 +74,240 @@ export async function generateEmbedding(text: string, useLocalApi: boolean = tru
   
   // 文本标准化处理
   const normalizedText = text.trim().toLowerCase();
+  console.log('[EmbeddingService] generateEmbedding: 标准化后的文本:', `"${normalizedText}"`);
   console.log('[EmbeddingService] generateEmbedding: 标准化后的文本长度:', normalizedText.length);
   
-  // 检查缓存
+  // 第一步：检查是否有正在进行的相同请求
+  if (normalizedText in pendingRequests) {
+    console.log('[EmbeddingService] generateEmbedding: 发现正在进行的相同请求，等待结果...');
+    return await pendingRequests[normalizedText];
+  }
+  
+  // 第二步：检查内存缓存
   if (embeddingCache[normalizedText]) {
-    console.log('[EmbeddingService] generateEmbedding: 使用缓存的嵌入向量');
+    console.log('[EmbeddingService] generateEmbedding: 使用内存缓存的嵌入向量');
     return embeddingCache[normalizedText];
   }
   
-  try {
-    // 在浏览器环境中，始终使用本地API路由
-    if (typeof window !== 'undefined') {
-      console.log('[EmbeddingService] generateEmbedding: 浏览器环境，使用本地API路由');
-      
-      const response = await fetch('/api/embedding', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ text: normalizedText }),
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('[EmbeddingService] generateEmbedding: 本地API响应错误:', errorData);
-        throw new Error(`本地API响应错误: ${errorData.error || response.statusText}`);
+  // 创建Promise来处理这个请求
+  const requestPromise = (async (): Promise<number[]> => {
+    try {
+      // 第三步：检查数据库缓存（仅在服务器端）
+      if (typeof window === 'undefined') {
+        try {
+          const supabase = getSupabaseClient();
+          if (supabase) {
+            console.log('[EmbeddingService] generateEmbedding: 检查数据库缓存...');
+            console.log('[EmbeddingService] generateEmbedding: 查询参数:', `"${normalizedText}"`);
+            
+            const { data: cachedData, error } = await supabase
+              .rpc('get_cached_embedding', {
+                p_query: normalizedText
+              });
+            
+            console.log('[EmbeddingService] generateEmbedding: RPC调用结果:', {
+              error: error ? error.message : null,
+              dataLength: cachedData ? cachedData.length : 0,
+              data: cachedData ? 'exists' : 'null'
+            });
+            
+            if (error) {
+              console.error('[EmbeddingService] generateEmbedding: 数据库缓存查询错误:', error);
+            } else if (cachedData && cachedData.length > 0) {
+              const cached = cachedData[0];
+              console.log('[EmbeddingService] generateEmbedding: 缓存数据结构:', {
+                id: cached.id,
+                hasEmbedding: !!cached.embedding,
+                embeddingType: typeof cached.embedding,
+                embeddingLength: Array.isArray(cached.embedding) ? cached.embedding.length : 'not array'
+              });
+              
+              if (cached.embedding) {
+                let embedding: number[];
+                
+                // 处理不同格式的嵌入向量
+                if (Array.isArray(cached.embedding)) {
+                  // 如果已经是数组，直接使用
+                  embedding = cached.embedding;
+                  console.log('[EmbeddingService] generateEmbedding: 找到数据库缓存（数组格式），维度:', embedding.length);
+                } else if (typeof cached.embedding === 'string') {
+                  // 如果是字符串，尝试解析
+                  try {
+                    // 尝试直接JSON解析
+                    embedding = JSON.parse(cached.embedding);
+                    console.log('[EmbeddingService] generateEmbedding: 找到数据库缓存（字符串格式已解析），维度:', embedding.length);
+                  } catch (parseError) {
+                    // 如果JSON解析失败，可能是PostgreSQL向量格式
+                    try {
+                      // PostgreSQL vector类型通常返回为 "[1,2,3,...]" 格式
+                      const vectorStr = cached.embedding.toString();
+                      if (vectorStr.startsWith('[') && vectorStr.endsWith(']')) {
+                        embedding = JSON.parse(vectorStr);
+                        console.log('[EmbeddingService] generateEmbedding: 找到数据库缓存（PostgreSQL向量格式已解析），维度:', embedding.length);
+                      } else {
+                        console.warn('[EmbeddingService] generateEmbedding: 无法解析向量字符串格式:', vectorStr.slice(0, 100));
+                        embedding = null as any;
+                      }
+                    } catch (vectorParseError) {
+                      console.error('[EmbeddingService] generateEmbedding: 解析向量字符串失败:', vectorParseError);
+                      embedding = null as any;
+                    }
+                  }
+                } else {
+                  console.warn('[EmbeddingService] generateEmbedding: 未知的嵌入向量格式');
+                  embedding = null as any;
+                }
+                
+                // 验证解析结果
+                if (embedding && Array.isArray(embedding) && embedding.length > 0) {
+                  console.log('[EmbeddingService] generateEmbedding: 缓存向量有效，样本:', embedding.slice(0, 3));
+                  
+                  // 将数据库缓存添加到内存缓存
+                  embeddingCache[normalizedText] = embedding;
+                  console.log('[EmbeddingService] generateEmbedding: 数据库缓存已添加到内存缓存');
+                  
+                  return embedding;
+                } else {
+                  console.warn('[EmbeddingService] generateEmbedding: 解析后的向量无效或为空');
+                }
+              } else {
+                console.warn('[EmbeddingService] generateEmbedding: 数据库中找到记录但嵌入向量为空');
+              }
+            } else {
+              console.log('[EmbeddingService] generateEmbedding: 数据库缓存中未找到该查询');
+              
+              // 额外验证：直接查询表来确认是否存在记录
+              try {
+                const { data: directQuery, error: directError } = await supabase
+                  .from('query_embeddings_cache')
+                  .select('query, created_at')
+                  .eq('query', normalizedText);
+                
+                console.log('[EmbeddingService] generateEmbedding: 直接表查询结果:', {
+                  error: directError ? directError.message : null,
+                  found: directQuery ? directQuery.length : 0,
+                  data: directQuery
+                });
+              } catch (directError) {
+                console.error('[EmbeddingService] generateEmbedding: 直接表查询失败:', directError);
+              }
+            }
+          } else {
+            console.warn('[EmbeddingService] generateEmbedding: 无法创建Supabase客户端');
+          }
+        } catch (cacheError) {
+          console.error('[EmbeddingService] generateEmbedding: 查询数据库缓存失败:', cacheError);
+        }
       }
       
-      const data = await response.json();
+      console.log('[EmbeddingService] generateEmbedding: 内存和数据库缓存都未命中，开始生成新的嵌入向量');
       
-      if (!data || !data.embedding || !Array.isArray(data.embedding)) {
-        console.error('[EmbeddingService] generateEmbedding: 本地API响应无效:', data);
-        throw new Error('本地API响应无效，无法获取嵌入向量');
+      let embedding: number[];
+      
+      // 在浏览器环境中，始终使用本地API路由
+      if (typeof window !== 'undefined') {
+        console.log('[EmbeddingService] generateEmbedding: 浏览器环境，使用本地API路由');
+        
+        const response = await fetch('/api/embedding', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ text: normalizedText }),
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error('[EmbeddingService] generateEmbedding: 本地API响应错误:', errorData);
+          throw new Error(`本地API响应错误: ${errorData.error || response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        if (!data || !data.embedding || !Array.isArray(data.embedding)) {
+          console.error('[EmbeddingService] generateEmbedding: 本地API响应无效:', data);
+          throw new Error('本地API响应无效，无法获取嵌入向量');
+        }
+        
+        embedding = data.embedding;
+        console.log('[EmbeddingService] generateEmbedding: 成功获取嵌入向量，维度:', embedding.length);
+      }
+      // 服务器端环境
+      else {
+        if (useLocalApi) {
+          console.log('[EmbeddingService] generateEmbedding: 服务器端直接调用OpenAI API');
+          
+          const openai = createOpenAIClient();
+          if (!openai) {
+            throw new Error('无法创建OpenAI客户端');
+          }
+          
+          console.log('[EmbeddingService] generateEmbedding: 调用OpenAI API生成嵌入向量...');
+          console.log('[EmbeddingService] generateEmbedding: 使用模型:', 'text-embedding-3-small');
+          
+          const startTime = Date.now();
+          const response = await openai.embeddings.create({
+            model: 'text-embedding-3-small',
+            input: normalizedText,
+            encoding_format: 'float',
+          });
+          const endTime = Date.now();
+          
+          console.log('[EmbeddingService] generateEmbedding: API调用耗时:', endTime - startTime, 'ms');
+          
+          if (!response || !response.data || !response.data[0] || !response.data[0].embedding) {
+            console.error('[EmbeddingService] generateEmbedding: API响应无效:', JSON.stringify(response));
+            throw new Error('OpenAI API响应无效，无法获取嵌入向量');
+          }
+          
+          embedding = response.data[0].embedding;
+          console.log('[EmbeddingService] generateEmbedding: 成功获取嵌入向量，维度:', embedding.length);
+          
+          // 尝试缓存到数据库
+          try {
+            const supabase = getSupabaseClient();
+            if (supabase) {
+              console.log('[EmbeddingService] generateEmbedding: 缓存新生成的向量到数据库...');
+              console.log('[EmbeddingService] generateEmbedding: 缓存参数:', {
+                query_text: normalizedText,
+                vector_length: embedding.length
+              });
+              
+              const { error: cacheError } = await supabase.rpc('cache_query_embedding', {
+                query_text: normalizedText,
+                query_vector: embedding
+              });
+              
+              if (cacheError) {
+                console.error('[EmbeddingService] generateEmbedding: 缓存到数据库失败:', cacheError);
+              } else {
+                console.log('[EmbeddingService] generateEmbedding: 成功缓存到数据库');
+              }
+            }
+          } catch (dbCacheError) {
+            console.error('[EmbeddingService] generateEmbedding: 数据库缓存过程中发生错误:', dbCacheError);
+          }
+        } else {
+          throw new Error('无法生成嵌入向量，当前环境不支持');
+        }
       }
       
-      const embedding = data.embedding;
-      console.log('[EmbeddingService] generateEmbedding: 成功获取嵌入向量，维度:', embedding.length);
-      
-      // 更新缓存
+      // 更新内存缓存
       embeddingCache[normalizedText] = embedding;
-      console.log('[EmbeddingService] generateEmbedding: 嵌入向量已添加到缓存');
+      console.log('[EmbeddingService] generateEmbedding: 嵌入向量已添加到内存缓存');
       
       return embedding;
+    } finally {
+      // 清理pending请求
+      delete pendingRequests[normalizedText];
     }
-    // 服务器端环境
-    else {
-      if (useLocalApi) {
-        // 即使在服务器端，也可以使用API路由
-        console.log('[EmbeddingService] generateEmbedding: 服务器端使用API路由');
-        
-        // 这里可以使用内部调用而不是HTTP请求
-        // 简化处理，仍然使用OpenAI直接调用
-        const openai = createOpenAIClient();
-        if (!openai) {
-          throw new Error('无法创建OpenAI客户端');
-        }
-        
-        console.log('[EmbeddingService] generateEmbedding: 调用OpenAI API生成嵌入向量...');
-        console.log('[EmbeddingService] generateEmbedding: 使用模型:', 'text-embedding-3-small');
-        
-        const startTime = Date.now();
-        const response = await openai.embeddings.create({
-          model: 'text-embedding-3-small',
-          input: normalizedText,
-          encoding_format: 'float',
-        });
-        const endTime = Date.now();
-        
-        console.log('[EmbeddingService] generateEmbedding: API调用耗时:', endTime - startTime, 'ms');
-        
-        if (!response || !response.data || !response.data[0] || !response.data[0].embedding) {
-          console.error('[EmbeddingService] generateEmbedding: API响应无效:', JSON.stringify(response));
-          throw new Error('OpenAI API响应无效，无法获取嵌入向量');
-        }
-        
-        const embedding = response.data[0].embedding;
-        console.log('[EmbeddingService] generateEmbedding: 成功获取嵌入向量，维度:', embedding.length);
-        
-        // 更新缓存
-        embeddingCache[normalizedText] = embedding;
-        console.log('[EmbeddingService] generateEmbedding: 嵌入向量已添加到缓存');
-        
-        return embedding;
-      }
-    }
-    
-    throw new Error('无法生成嵌入向量，当前环境不支持');
+  })();
+  
+  // 存储pending请求
+  pendingRequests[normalizedText] = requestPromise;
+  
+  try {
+    return await requestPromise;
   } catch (error) {
     console.error('[EmbeddingService] generateEmbedding: 生成嵌入向量失败:', error);
     console.error('[EmbeddingService] generateEmbedding: 错误详情:', JSON.stringify(error, null, 2));

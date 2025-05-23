@@ -178,7 +178,12 @@ export default function SearchDebugPage() {
               <p>菜系: {recipe.cuisine}</p>
               <p>难度: {recipe.difficulty}</p>
               <p className="mt-2">
-                <small className="text-gray-500">相关性分数: {recipe.relevance_score?.toFixed(2) || '无'}</small>
+                <small className="text-gray-500">相关性分数: {
+                  (recipe as any).relevanceScore?.toFixed(2) || 
+                  recipe.relevance_score?.toFixed(2) || 
+                  recipe.matchScore?.toFixed(2) || 
+                  '无'
+                }</small>
               </p>
               <details className="mt-2">
                 <summary className="cursor-pointer text-sm text-gray-600">查看详情</summary>

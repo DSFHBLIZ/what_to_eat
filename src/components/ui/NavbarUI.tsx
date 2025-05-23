@@ -45,7 +45,7 @@ const NavbarUI = ({
                 {logoContent ? (
                   logoContent
                 ) : (
-                  <span className="text-indigo-600 text-3xl">今天吃什么？</span>
+                  <span className="text-indigo-600 text-3xl">冰箱里有什么？</span>
                 )}
               </Link>
             </div>

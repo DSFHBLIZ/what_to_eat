@@ -40,7 +40,7 @@ const RecipeLayout = ({
       
       {/* 打印时显示的页脚 */}
       <div className="hidden print:block print-footer">
-        <p>打印于 {new Date().toLocaleDateString()} - 今天吃什么</p>
+        <p>打印于 {new Date().toLocaleDateString()} - 冰箱里有什么</p>
       </div>
     </div>
   );

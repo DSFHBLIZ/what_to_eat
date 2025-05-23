@@ -12,21 +12,32 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
   // 如果找不到菜谱，返回默认元数据
   if (!recipe) {
     return {
-      title: '菜谱未找到 - 简食搜索',
+      title: '菜谱未找到 - 冰箱里有什么？',
       description: '无法找到请求的菜谱，请尝试搜索其他菜谱。',
+      robots: { index: false, follow: false },
     };
   }
 
   // 安全处理菜谱数据
   const safeRecipe = validateAndSanitizeRecipe(recipe);
 
+  // 保持网站品牌名称
+  const seoTitle = `${safeRecipe.name}的家常做法 - 冰箱里有什么？`;
+  const seoDescription = safeRecipe.description 
+    ? `学会${safeRecipe.name}的简单做法：${safeRecipe.description.substring(0, 100)}...详细步骤、用料清单，根据现有食材轻松制作。`
+    : `${safeRecipe.name}怎么做？详细的制作步骤、用料清单，基于您现有食材的智能推荐菜谱。`;
+
+  // 生成关键字
+  const keywords = `${safeRecipe.name}, ${safeRecipe.name}的做法, ${safeRecipe.name}怎么做, 家常菜, 菜谱, 做菜, 冰箱里有什么, 中式料理, 家常做法`;
+
   // 返回基于菜谱数据的元数据
   return {
-    title: `${safeRecipe.name} - 简食搜索`,
-    description: safeRecipe.description || `查看${safeRecipe.name}的做法、用料和烹饪步骤`,
+    title: seoTitle,
+    description: seoDescription,
+    keywords: keywords,
     openGraph: {
-      title: `${safeRecipe.name} - 简食搜索`,
-      description: safeRecipe.description || `查看${safeRecipe.name}的做法、用料和烹饪步骤`,
+      title: seoTitle,
+      description: seoDescription,
       images: safeRecipe.imageUrl ? [{ url: safeRecipe.imageUrl }] : [],
     },
   };
