@@ -37,3 +37,6 @@ next-env.d.ts
 
 # 原始菜谱数据，体积过大，不上传
 中国structured_recipes.json .env.local
+
+# PRD文件，不上传
+PRD2.md
